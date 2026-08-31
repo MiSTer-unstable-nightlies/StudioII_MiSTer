@@ -23,6 +23,32 @@ span and driven-curve family at about `0.9945` of the accepted absolute tuning.
 That scale is consistent with unit/component tolerance and is not a reason to
 retune the default model.
 
+## Circuit description
+
+Paul Robson's archived Studio II technical note describes a Q-gated NE555
+astable switched by the 1802's SEQ and REQ instructions. It gives `Ra = 400
+kOhm` and `Rb = 480 kOhm`, with the control pin connected to ground through a
+`10 uF` electrolytic capacitor. That independently supports the observed
+continuous downward pitch warp and gives high/low phase lengths proportional
+to `(Ra + Rb):Rb = 880:480 = 11:6`, matching the accepted duty ratio.
+Read in audible units, its stated working frequency of about 625 agrees with
+the measured 628.4 Hz fresh-note pitch to within about 0.5 percent.
+
+The surviving note prints `C = 1.8 pF`, `625 kHz`, and an approximate decay to
+half frequency in 0.4 seconds. The capacitance/frequency units are inconsistent
+with an audible beeper and should be treated as a likely notation or
+transcription error, not silently corrected. The broad description corroborates
+the circuit topology and direction of the pitch change; measured gameplay audio
+remains the authority for the accepted 628.4--505.2 Hz contour and timing.
+
+Robson also describes a possible capacitor-charging circuit that extends the
+first power-up beep beyond its programmed 80 ms. Treat that startup event as a
+separate initial-condition problem rather than using it to tune ordinary
+in-game Q pulses.
+
+The surviving source was preserved from
+`https://archive.kontek.net/studio2.classicgaming.gamespy.com/techinfo.htm`.
+
 ## Implementation
 
 `rtl/rcastudioii.sv` maintains one oscillator state through drive, release, and

@@ -35,10 +35,12 @@ Read this entire file every session. It is deliberately limited to durable agent
 
 - Inspect Git status before editing and before handoff. Preserve user changes, generated captures, firmware, and release artifacts; never delete or overwrite them as cleanup.
 - Do not commit, stash, create/switch/delete branches or tags, rewrite history, push, change a PR, or create a release unless the user explicitly asks for that action.
+- Never push from this repository. A push may trigger an automated build or distribution; prepare the local commit and leave the push to the user.
+- Treat `releases/` as a live distribution boundary: adding or replacing a file there can send it to users through `update_all`. Never change a release artifact unless the user explicitly requests that exact publication change, and always leave publication to the user.
 - Never run Quartus synthesis. Give the user the exact supported command and review the resulting reports they provide.
 - Do not run Verilator builds, hardware regressions, or other long jobs unless the user explicitly asks. Prefer the exact command plus expected result; quick static checks are allowed.
 - Substantial additions use a dedicated review branch after user approval. Treat `main` as release-producing.
-- Before any remote Git action, review the diff and untracked files and obtain explicit approval.
+- Before any permitted remote Git action, review the diff and untracked files and obtain explicit approval.
 
 ## Change discipline
 
