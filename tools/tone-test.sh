@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Directed test for the CDP1864 tone generator (rtl/pixie/cdp1864.v).
+# Directed test for the Studio III programmable tone generator
+# (rtl/pixie/cdp1863.v).
 #
 #   tools/tone-test.sh
 #
@@ -9,10 +10,11 @@
 # a hand-assembled native-1802 cartridge, one run per latch value, and measures
 # the frequency from the sim's audio edge count.
 #
-# Expected from the sources (docs/development.md and the datasheet
-# distilled in rtl/pixie/cdp1864.v):
+# Expected from the sources (docs/development.md and the datasheets distilled
+# in rtl/pixie/cdp1863.v):
 #
 #   f = clk / 8 / 4 / (latch+1) / 2      MAME's division chain
+#   f = clk / 8     / (latch+1) / 2      native CDP1863 division chain
 #
 #   latch 255 ->   106.8 Hz   datasheet says the range bottoms out at 107 Hz
 #   latch  53 ->   506.4 Hz   MAME's power-on default (0x35)
@@ -65,8 +67,11 @@ EOF
 
 # With no BIOS there is only ever one Q window, so no need to skip a start-up
 # beep -- but keep taking the last one, which is also the only one.
-measure() {  # $1 = firmware image, $2 = machine -> prints "edges frames"
-    "$RTL" --machine "$2" --bios "$1" --frames "$FRAMES" --trace-q --quiet 2>/dev/null \
+measure() {  # $1 = firmware image, $2 = machine, remaining args = sim options
+    local firmware="$1" machine="$2"
+    shift 2
+    "$RTL" --machine "$machine" --bios "$firmware" "$@" \
+      --frames "$FRAMES" --trace-q --quiet 2>/dev/null \
       | awk -v tot="$FRAMES" '
           function cnt(x) { gsub(/[()]/,"",x); return x+0 }
           /^Q 1 frame/ { on=$4+0; e0=cnt($9); seen=1; closed=0 }
@@ -101,6 +106,45 @@ EOF
 echo "CDP1864 tone generator:"
 for l in 1 15 53 127 255; do check "$l"; done
 
+# The standalone CDP1863 on the NTSC Studio III omits the CDP1864's
+# divide-by-four stage. Original NTSC pitch must therefore be exactly four
+# times PAL for the same latch, while the OSD's lower setting selects that
+# existing stage and must match PAL.
+build 53 "$TMP/ratio.bin" 1
+read -r pal_edges pal_frames <<<"$(measure "$TMP/ratio.bin" mpt02)"
+read -r ntsc_edges ntsc_frames <<<"$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch original)"
+read -r low_edges low_frames <<<"$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch pal)"
+read -r pal_hz ntsc_hz low_hz native_ratio low_ratio native_ok low_ok <<<"$(
+python3 - "$pal_edges" "$pal_frames" "$ntsc_edges" "$ntsc_frames" \
+          "$low_edges" "$low_frames" "$CLK" <<'EOF'
+import sys
+pe, pf, ne, nf, le, lf, clk = map(int, sys.argv[1:])
+def hz(edges, frames, lines):
+    return (edges / 2) / (frames * 112 * lines / clk) if frames else 0
+p = hz(pe, pf, 312)
+n = hz(ne, nf, 262)
+l = hz(le, lf, 262)
+nr = n / p if p else 0
+lr = l / p if p else 0
+print(f"{p:.1f} {n:.1f} {l:.1f} {nr:.3f} {lr:.3f} "
+      f"{int(abs(nr-4.0)/4.0 < 0.02)} {int(abs(lr-1.0) < 0.02)}")
+EOF
+)"
+
+echo "Studio III pitch selection (latch 53):"
+if [[ "$native_ok" == "1" ]]; then
+    printf "  ok    native NTSC %s Hz is %sx PAL %s Hz\n" "$ntsc_hz" "$native_ratio" "$pal_hz"
+else
+    printf "  FAIL  native NTSC %s Hz is %sx PAL %s Hz, expected 4x\n" "$ntsc_hz" "$native_ratio" "$pal_hz"
+    fail=1
+fi
+if [[ "$low_ok" == "1" ]]; then
+    printf "  ok    lowered NTSC %s Hz matches PAL (%sx)\n" "$low_hz" "$low_ratio"
+else
+    printf "  FAIL  lowered NTSC %s Hz is %sx PAL %s Hz, expected 1x\n" "$low_hz" "$low_ratio" "$pal_hz"
+    fail=1
+fi
+
 # Q low must silence it outright -- AOE holds AUDIO OUT low (datasheet p5).
 build 53 "$TMP/q.bin" 0
 read -r edges _ <<<"$(measure "$TMP/q.bin" mpt02)"
@@ -113,11 +157,10 @@ fi
 
 # And the Studio II must be untouched: it keeps its discrete 555 and ignores
 # OUT 4 entirely. Testing that by absolute frequency would be wrong, because the
-# 555 model deliberately droops -- ~547 Hz fresh, decaying to ~274 Hz over 0.4s,
-# which is the "warpy" power-up sound. Over a
-# window this long the average lands nearer the decayed end. So test the property
-# that matters instead: two very different latch values must give the *same*
-# frequency, because neither reaches the beeper.
+# default Medium model deliberately droops from about 625 Hz toward 502.5 Hz.
+# Over a window this long the average lands nearer the sustained end. Test the
+# property that matters here instead: two very different latch values must give
+# the *same* frequency, because neither reaches the beeper.
 build 1   "$TMP/s2a.bin" 1
 build 255 "$TMP/s2b.bin" 1
 read -r a af <<<"$(measure "$TMP/s2a.bin" studio2)"
@@ -129,7 +172,7 @@ a,b=$ahz,$bhz
 print(1 if a>0 and b>0 and abs(a-b)/max(a,b) < 0.02 else 0)")
 if [[ "$same" == "1" ]]; then
     printf "  ok    Studio II ignores OUT 4: %s Hz and %s Hz for latch 1 vs 255\n" "$ahz" "$bhz"
-    echo   "        (its 555 droops from ~547 to ~274 Hz, so the absolute value depends"
+    echo   "        (its Medium 555 tuning droops from ~625 to ~502.5 Hz, so the average depends"
     echo   "         on the window; what matters is that the latch cannot change it)"
 else
     printf "  FAIL  Studio II frequency moved with the tone latch: %s Hz vs %s Hz\n" "$ahz" "$bhz"

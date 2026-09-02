@@ -85,6 +85,8 @@ module cdp1861
     // whole raster. The Verilator harness captures this so its frames stay 64x128
     // and every recorded score keeps its meaning; the framework gets video_de.
     output            bitmap_de,
+    output            bitmap_hblank,
+    output            bitmap_vblank,
     output reg        VSync,
     output reg        HSync,
     output reg        VBlank,
@@ -433,13 +435,23 @@ assign csync    = ~(HSync ^ VSync);
 assign video_de = ~(VBlank | HBlank);
 
 // The bitmap's own window, for the harness. This is what video_de used to be.
-reg bitmap_de_r;
+reg bitmap_de_r, bitmap_hblank_r, bitmap_vblank_r;
 always @(posedge clk) begin
-    if (reset)       bitmap_de_r <= 1'b0;
-    else if (ce_pix) bitmap_de_r <= line_displayed &&
-                                    (hcount >= DE_START) && (hcount < DE_END);
+    if (reset) begin
+        bitmap_de_r     <= 1'b0;
+        bitmap_hblank_r <= 1'b1;
+        bitmap_vblank_r <= 1'b1;
+    end
+    else if (ce_pix) begin
+        bitmap_de_r     <= line_displayed &&
+                           (hcount >= DE_START) && (hcount < DE_END);
+        bitmap_hblank_r <= (hcount < DE_START) || (hcount >= DE_END);
+        bitmap_vblank_r <= !line_displayed;
+    end
 end
-assign bitmap_de = bitmap_de_r;
+assign bitmap_de     = bitmap_de_r;
+assign bitmap_hblank = bitmap_hblank_r;
+assign bitmap_vblank = bitmap_vblank_r;
 
 endmodule
 

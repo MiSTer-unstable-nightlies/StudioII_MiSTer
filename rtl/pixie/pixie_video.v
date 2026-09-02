@@ -48,6 +48,8 @@ module pixie_video
     output            HBlank,
     output            video_de,
     output            bitmap_de,
+    output            bitmap_hblank,
+    output            bitmap_vblank,
     // CDP1862 hand-off, for the NTSC Studio III
     input       [2:0] colour_in,
     input             con,
@@ -84,6 +86,8 @@ cdp1861 cdp1861 (
     .HBlank     (HBlank),       // O
     .video_de   (video_de),
     .bitmap_de  (bitmap_de),     // O
+    .bitmap_hblank(bitmap_hblank),
+    .bitmap_vblank(bitmap_vblank),
     .colour_in     (colour_in),
     .con           (con),
     .bg_step       (bg_step),

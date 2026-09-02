@@ -41,6 +41,8 @@ module rcastudioii
 	input              joy_manual,     // OSD "Mapping": 0 = auto-detect, 1 = use joy_override
 	output       [3:0] auto_profile,   // the detected profile, for the top level to show in the OSD
 	input        [1:0] players,        // OSD: 0 = auto, 1 = one player, 2 = two players
+	input        [2:0] beeper_tune,    // OSD tuning; 0 = original/reference
+	input              ntsc_pal_pitch, // Studio III NTSC: use the PAL divide-by-four tone stage
 	input        [9:0] osk_a,          // on-screen keypad presses for keypad A (bit = key)
 	input        [9:0] osk_b,          // and for keypad B
 	output reg         chip8_fw_loaded,
@@ -60,8 +62,11 @@ module rcastudioii
 	output reg         video_de,
 	// DE for the bitmap alone, as distinct from video_de (the whole raster). The
 	// simulation harness captures this so its frames stay 64x128 / 64x192 and the
-	// recorded scores keep their meaning. Unused by the FPGA top level.
+	// recorded scores keep their meaning. Separate bitmap blanking lets the FPGA
+	// top hide borders without changing the device raster or sync.
 	output reg         bitmap_de,
+	output reg         bitmap_hblank,
+	output reg         bitmap_vblank,
 	// {R,G,B}, one bit per channel -- this mirrors the hardware rather than
 	// inventing a format. The CDP1864 in the successor machines has exactly one
 	// RDATA, GDATA and BDATA pin, fed from colour RAM. The CDP1861
@@ -162,7 +167,9 @@ pixie_video pixie_video (
     .VBlank     (VBlank_61),  // O
     .HBlank     (HBlank_61),  // O
     .video_de   (de_61),      // O
-    .bitmap_de  (bde_61)      // O
+    .bitmap_de  (bde_61),     // O
+    .bitmap_hblank(bhb_61),
+    .bitmap_vblank(bvb_61)
 );
 
 // ---- CDP1864, the colour machines' video ---------------------------------
@@ -176,6 +183,7 @@ pixie_video pixie_video (
 // gives the opcodes: 61 or 69 enable interrupt and DMA, 6C disables them.
 wire       DMAO_64, INT_64, EFx_64;
 wire       VSync_64, HSync_64, VBlank_64, HBlank_64, de_64, bde_64, bg_64;
+wire       bhb_64, bvb_64;
 wire [2:0] video_64;
 
 cdp1864 cdp1864
@@ -205,7 +213,9 @@ cdp1864 cdp1864
     .VBlank     (VBlank_64),
     .HBlank     (HBlank_64),
     .video_de   (de_64),
-    .bitmap_de  (bde_64)
+    .bitmap_de  (bde_64),
+    .bitmap_hblank(bhb_64),
+    .bitmap_vblank(bvb_64)
 );
 
 // ---- tone generator -------------------------------------------------------
@@ -225,7 +235,8 @@ cdp1863 cdp1863
     // standalone 1863 does not, so the same latch sounds four times higher on
     // the NTSC machine. MAME: cdp1864 f = clk/8/4/(latch+1)/2 against cdp1863
     // f = clk/8/(latch+1)/2 from its clock2 input, which is where TPB goes.
-    .div4    (machine == MACHINE_S3_PAL),
+    .div4    ((machine == MACHINE_S3_PAL) ||
+              ((machine == MACHINE_S3_NTSC) && ntsc_pal_pitch)),
     .tone_we (io_out && (io_n == 3'd4)),
     .tone_d  (cpu_dout),
     .aoe     (Q),
@@ -238,6 +249,7 @@ cdp1863 cdp1863
 wire       video_dot;
 wire       DMAO_61, INT_61, EFx_61;
 wire       VSync_61, HSync_61, VBlank_61, HBlank_61, de_61, bde_61;
+wire       bhb_61, bvb_61;
 wire [2:0] col61_dot, col61_bgc;
 wire       col61_bg;
 wire [2:0] video_61;
@@ -284,6 +296,8 @@ always @(*) begin
 	HBlank   = machine_mpt02 ? HBlank_64 : HBlank_61;
 	video_de = machine_mpt02 ? de_64     : de_61;
 	bitmap_de = machine_mpt02 ? bde_64   : bde_61;
+	bitmap_hblank = machine_mpt02 ? bhb_64 : bhb_61;
+	bitmap_vblank = machine_mpt02 ? bvb_64 : bvb_61;
 	video_bg  = machine_mpt02 ? bg_64    : bg_61;
 end
 
@@ -354,7 +368,8 @@ reg  [9:0] playerB = 10'h0;
 localparam [3:0] MAP_NONE       = 4'd0;   // no controller mapping; keep keypad/OSK input only
 localparam [3:0] MAP_CROSS      = 4'd1;   // 2/8/4/6 + 5 fire, both pads
 localparam [3:0] MAP_SPACEWAR   = 4'd2;   // fire A2, steer B4/B6
-localparam [3:0] MAP_FREEWAY    = 4'd3;   // steer B4/B6, throttle A2, brake A8
+localparam [3:0] MAP_FREEWAY    = 4'd3;   // steer B4/B6, Fire A2, Extra A0,
+                                          // Start B0, D-pad down brakes with A8
 localparam [3:0] MAP_BOWLING    = 4'd4;   // roll A5, hook A2/A8
 localparam [3:0] MAP_BASEBALL   = 4'd5;   // bat A5; pitch B5 straight, B2/B8 curve
 localparam [3:0] MAP_HOMEBREW   = 4'd6;   // Paul Robson's 1P games: 8-way on pad A
@@ -366,14 +381,19 @@ localparam [3:0] MAP_HB2P       = 4'd10;  // 2P homebrew (Hockey, Combat): cross
                                           // fire-on-0, each player's own pad. Normally
                                           // chosen by CRC, but also exposed in the OSD
                                           // list as "2P Homebrew" for manual override.
-localparam [3:0] MAP_CLEAR_ONLY = 4'd11;  // explicit no-controller mapping: only Clear/Select
-                                          // from the pad; numstick/keyboard still work.
-localparam [3:0] MAP_PADDLE     = 4'd12;  // TODO: fix 2-player to work when selecting 
-										  // that mode. Single-player, keypad B
-                                          // only. Up/down map to 2/8; left/fire/right map
-                                          // to the one-time racket-size choices B4/B5/B6.
+localparam [3:0] MAP_RACE       = 4'd11;  // A-side 8-way; Fire is an independent A2
+                                          // so acceleration can be held while steering
+localparam [3:0] MAP_TENNIS     = 4'd12;  // Auto/1P: Squash on keypad B. 2P: Tennis
+                                          // split across A/B. Up/down map to 2/8;
+                                          // left/fire/right select racket size 4/5/6;
+                                          // Extra maps to each player's 0 pause key.
 localparam [3:0] MAP_CHIP8      = 4'd13;  // common CHIP-8 movement cluster: 5/7/8/9
                                           // on pad A; Start 1, Fire F, Extra 0.
+localparam [3:0] MAP_CLIMB      = 4'd14;  // Climber/Outbreak: A-side movement, Fire
+                                          // replays on B1, Extra modifies left/right
+                                          // with matching B4/B6 for Outbreak speed
+localparam [3:0] MAP_EXPLORER   = 4'd15;  // Space Explorer: B-side 8-way, Fire A0,
+                                          // Extra locks with B5
 
 reg [3:0] map_profile = MAP_NONE;
 
@@ -428,9 +448,25 @@ always @(posedge clk_sys) begin
 			// Speedway + Tag
 			// Star Wars
 			// These cartridges use the MPT-02 joystick cross layout.
-			16'h03E6, 16'h8404, 16'h92BA, 16'hD0DA, 16'hD13E, 16'hD3E2, 16'hE153: begin
+			16'h03E6, 16'h8404, 16'h92BA, 16'h9505, 16'hD0DA, 16'hD13E,
+			16'hD3E2, 16'hE153: begin
 				map_profile <= MAP_CROSS;
 				start_key   <= 4'd1;
+			end
+
+			// Fifteen Puzzle
+			// Invasion, The v1.00
+			// Rocket v1.01
+			16'h127F, 16'h13A3, 16'h2DDB, 16'h3244, 16'h9562,
+			16'hD2F0, 16'hD481, 16'hF7A3: begin
+				map_profile <= MAP_CROSS;
+				start_key   <= 4'd1;
+			end
+
+			// Sports Fan (Baseball & Sumo Wrestling) (CAS-130)
+			16'h0192, 16'h8D88, 16'hD4A0: begin
+				map_profile <= MAP_CROSS;
+				start_key   <= 4'd0;
 			end
 
 			// TV Arcade IV - Baseball
@@ -447,7 +483,16 @@ always @(posedge clk_sys) begin
 
 			// TV Arcade III - Tennis + Squash
 			16'h88FB, 16'hFB76: begin
-				map_profile <= MAP_PADDLE;
+				map_profile <= MAP_TENNIS;
+				start_key   <= 4'd1;
+			end
+
+			// Game Pack / Grand Pack. Auto selects their first program, Doodle;
+			// the numeric and differently controlled programs remain accessible
+			// through direct keypad input or a manual profile.
+			16'h1594, 16'h3505, 16'h74AB, 16'h815E,
+			16'hEF21, 16'hFC34, 16'hFC72: begin
+				map_profile <= MAP_DOODLE;
 				start_key   <= 4'd1;
 			end
 
@@ -458,39 +503,39 @@ always @(posedge clk_sys) begin
 
 			// Asteroids / Asteroids Visicom
 			16'h1943, 16'hFBEF, 16'h1973, 16'h2B4D,
-			16'h6EE1, 16'hA008: begin
+			16'h6EE1, 16'hA008, 16'hAAFB, 16'hE977: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd5;
 			end
 
-			// Berzerk / Berzerk Visicom v1/v2
+			// Berzerk / Berzerk Visicom v1/v2/v3
 			16'h4F61, 16'hAEC7, 16'h787D, 16'hE080,
-			16'h2E9E, 16'h2143, 16'h7C7D, 16'h73A0: begin
+			16'h2E9E, 16'h2143, 16'h21A3, 16'h4771, 16'h7C7D, 16'h73A0: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd5;
 			end
 
 			// Invaders v1/v2/v3 / Invaders Color (MPT-02)
-			16'h6F69, 16'hADAB, 16'h0D1D, 16'h69AA, 16'h2D86, 16'h5AC5,
-			16'hA9DA, 16'hFB00: begin
+			16'h6F69, 16'h7A5E, 16'hADAB, 16'h0D1D, 16'h69AA, 16'h2D86, 16'h5AC5,
+			16'h937A, 16'hA9DA, 16'hFB00: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd0;
 			end
 
 			// Kaboom / Kaboom Color (MPT-02)
-			16'h6793, 16'hDFCF, 16'h8551, 16'h18DB, 16'h08D3: begin
+			16'h6793, 16'hDFCF, 16'h8551, 16'h18DB, 16'h08D3, 16'hF42A: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd0;
 			end
 
 			// Pacman / Pacman Visicom
-			16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4: begin
+			16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4, 16'hB99C: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd0;
 			end
 
 			// Scramble / Scramble Color (MPT-02)
-			16'hBA0B, 16'hE45F, 16'hFAA9, 16'h1280, 16'hD9F3, 16'hD341: begin
+			16'hBA0B, 16'hE45F, 16'hFAA9, 16'h1280, 16'hD9F3, 16'hD341, 16'hFE3F: begin
 				map_profile <= MAP_HOMEBREW;
 				start_key   <= 4'd6;
 			end
@@ -503,7 +548,7 @@ always @(posedge clk_sys) begin
 			// Combat v1/v2/v3 / Combat Visicom
 			16'h4ADA, 16'h188E, 16'hD87F,
 			16'h54C7, 16'h4AA2, 16'hABBA, 16'h4009,
-			16'hB70E, 16'h650C: begin
+			16'hB70E, 16'h650C, 16'hE142, 16'hFD35: begin
 				map_profile <= MAP_HB2P;
 				start_key   <= 4'd1;
 			end
@@ -511,54 +556,73 @@ always @(posedge clk_sys) begin
 			// Hockey v1/v2/v3 / Hockey Visicom v1/v2
 			16'h114A, 16'h4F55, 16'hD5DE,
 			16'h554B, 16'h1154, 16'hDE71, 16'hD753,
-			16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2: begin
+			16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2, 16'hB075: begin
 				map_profile <= MAP_HB2P;
 				start_key   <= 4'd1;
 			end
 
 
 			// ----------------------------------------------------------------
-			// No explicit profile set (8WAY) but known cartridge names
+			// Homebrew: dedicated single-player layouts
 			// ----------------------------------------------------------------
 
-			// 86677b (Europe) (unknown)
-			16'hFC72: begin
-				map_profile <= MAP_8WAY;
+			// Climber v1.00
+			16'h1139, 16'hAD6A: begin
+				map_profile <= MAP_CLIMB;
+				start_key   <= 4'd3;
+			end
+
+			// Outbreak v1.00
+			16'hA83F, 16'hBE58: begin
+				map_profile <= MAP_CLIMB;
+				start_key   <= 4'd0;
+			end
+
+			// Space Explorer
+			16'h0C03, 16'h92C7: begin
+				map_profile <= MAP_EXPLORER;
+				start_key   <= 4'd1; // ignored: this program starts directly
+			end
+
+
+			// ----------------------------------------------------------------
+			// Keypad-only software. MAP_NONE preserves the verified Start key
+			// without inventing directional or action-button controls.
+			// ----------------------------------------------------------------
+
+			// A Cheap Graphics Computer
+			// Concentration + Match
+			// TV Arcade II - Fun with Numbers
+			// TV Casino Series - Blackjack
+			// TV Casino Series - TV Bingo
+			// TV School House I / II - Math Fun
+			16'h0ECC, 16'h29B8, 16'h31AE, 16'h3731, 16'h7A43,
+			16'h7D85, 16'h9D0D, 16'hAF65, 16'hB2FF, 16'hBBC8,
+			16'hBD53, 16'hC8B4, 16'hCEC2, 16'hEE76: begin
+				map_profile <= MAP_NONE;
 				start_key   <= 4'd1;
 			end
 
-			// 87201 (Europe) (unknown)
-			16'h74AB: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
+			// TV Mystic Series - Biorhythm
+			// Visicom Inspiration (Fortunetelling & Biorhythm)
+			// Visicom Gambler I / II, Sansu Drill, and Space Command
+			// Q-Sound Test
+			16'h12E8, 16'h2BC5, 16'h2F1A, 16'h5433, 16'h8CDE,
+			16'h9BCF, 16'h9F6E, 16'hA7DF, 16'hB7A7, 16'hBF97,
+			16'hC106,
+			16'hC7C6, 16'hDA69, 16'hDCFA, 16'hE4C4, 16'hEBF4,
+			16'hF178: begin
+				map_profile <= MAP_NONE;
+				start_key   <= 4'd0;
 			end
+
+
+			// ----------------------------------------------------------------
+			// Additional known cartridge mappings
+			// ----------------------------------------------------------------
 
 			// RCA Studio II Resident Games
 			16'hB5BF: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// A Cheap Graphics Computer
-			16'hBBC8, 16'hEE76: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Climber v1.00
-			16'hAD6A, 16'h1139: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Concentration + Match
-			16'h7A43, 16'h0ECC: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Fifteen Puzzle
-			16'h3244: begin
 				map_profile <= MAP_8WAY;
 				start_key   <= 4'd1;
 			end
@@ -569,33 +633,10 @@ always @(posedge clk_sys) begin
 				start_key   <= 4'd1;
 			end
 
-			// Invasion, The v1.00
-			16'h2DDB: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Outbreak v1.00
-			16'hA83F, 16'hBE58: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Race
-			16'h5638, 16'h47EA: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Rocket v1.01
-			16'h127F, 16'hD2F0: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Space Explorer
-			16'h0C03, 16'h92C7: begin
-				map_profile <= MAP_8WAY;
+			// Race / Race Colour v1/v2
+			16'h47EA, 16'h5374, 16'h5638, 16'h797C,
+			16'hD6C0, 16'hFCC8: begin
+				map_profile <= MAP_RACE;
 				start_key   <= 4'd1;
 			end
 
@@ -659,43 +700,6 @@ always @(posedge clk_sys) begin
 				start_key   <= 4'd1;
 			end
 
-			// TV Arcade II - Fun with Numbers
-			16'h29B8, 16'hCEC2: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV Casino Series - Blackjack
-			16'hAF65, 16'hC8B4: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV Casino Series - TV Bingo
-			16'h3731, 16'h31AE: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV Mystic Series - Biorhythm
-			16'h8CDE, 16'hDA69: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV School House I
-			16'h7D85, 16'h9D0D: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV School House II - Math Fun
-			16'hBD53, 16'hB2FF: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-
 			// ----------------------------------------------------------------
 			// Existing recognized no-controller entries
 			//
@@ -705,18 +709,8 @@ always @(posedge clk_sys) begin
 			// ----------------------------------------------------------------
 
 			16'h1634, 16'hB76F: begin
-				map_profile <= MAP_CLEAR_ONLY;
-				start_key   <= 4'd1;
-			end
-
-
-			// ----------------------------------------------------------------
-			// Visicom Inspiration (Fortunetelling & Biorhythm), .st2
-			// ----------------------------------------------------------------
-
-			16'hE4C4: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd0;
+				map_profile <= MAP_NONE;
+				start_key   <= 4'd15; // no verified Start key
 			end
 
 
@@ -766,7 +760,7 @@ always @(posedge clk_sys) begin
 		// A3 = BOWLING; A4 = FREEWAY. If the service manual claims otherwise, it's wrong.
 		else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
 		else if (builtin_padA[4]) begin builtin_profile <= MAP_FREEWAY; builtin_sel <= 1'b1; end  // Freeway
-		else if (builtin_padA[5]) begin builtin_profile <= MAP_CLEAR_ONLY; builtin_sel <= 1'b1; end  // Addition: digits
+		else if (builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Addition: digits
 	end
 end
 
@@ -803,6 +797,7 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[2] = 1'b1;
 		MAP_FREEWAY: begin                   // throttle/brake
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+			if (j[4]) k[2] = 1'b1;   if (j[5]) k[0] = 1'b1;
 		end
 		MAP_BOWLING: begin                   // roll straight, or hook up/down
 			if (j[4]) k[5] = 1'b1;
@@ -830,8 +825,19 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
 			if (j[4]) k[0] = 1'b1;
 		end
-		MAP_CLEAR_ONLY: ;                   // no controller presses: on-screen keypad
-											  // and keyboard still work, but the stick stays quiet
+		MAP_RACE: begin
+			case (j[3:0])
+			4'b1010: k[1] = 1'b1;
+			4'b1001: k[3] = 1'b1;
+			4'b0110: k[7] = 1'b1;
+			4'b0101: k[9] = 1'b1;
+			default: begin
+				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+			end
+			endcase
+			if (j[4]) k[2] = 1'b1;           // accelerate independently
+		end
 		MAP_GUNFIGHTER: begin                // 2P behaves like CROSS; Auto/1P uses the
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;   // right-hand B-only mapping
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
@@ -866,13 +872,22 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
 		end
-		MAP_PADDLE: ;                        // no A-side function: Start alone lives on
-										  // keypad A, gameplay is entirely keypad B
+		MAP_TENNIS: begin
+			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+			if (j[4]) k[5] = 1'b1;   if (j[5]) k[0] = 1'b1;
+		end
 		MAP_CHIP8: begin                     // common WASD-shaped CHIP-8 cluster
 			if (j[3]) k[5] = 1'b1;   if (j[2]) k[8] = 1'b1;
 			if (j[1]) k[7] = 1'b1;   if (j[0]) k[9] = 1'b1;
 			if (j[5]) k[0] = 1'b1;           // Extra
 		end
+		MAP_CLIMB: begin
+			if (j[3]) k[2] = 1'b1;
+			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+		end
+		MAP_EXPLORER:
+			if (j[4]) k[0] = 1'b1;           // Fire
 		default: ;
 		endcase
 		map_padA = k;
@@ -895,6 +910,7 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 		end
 		MAP_FREEWAY: begin                   // steering
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+			if (j[6]) k[0] = 1'b1;           // normal mode
 		end
 		MAP_BASEBALL: begin                  // pitch
 			if (j[4]) k[5] = 1'b1;
@@ -913,8 +929,7 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
 			if (j[4]) k[0] = 1'b1;
 		end
-		MAP_CLEAR_ONLY: ;                   // no controller presses: the on-screen keypad
-											// and keyboard still work, but the stick stays quiet
+		MAP_RACE: ;                         // all controls are on keypad A
 		MAP_GUNFIGHTER: begin               // 2P behaves like CROSS; Auto/1P uses the
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;   // right-hand B-only mapping
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
@@ -949,33 +964,50 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
 		end
-		MAP_PADDLE: begin                    // vertical movement plus racket-size setup.
+		MAP_TENNIS: begin                    // movement, racket-size setup, and pause
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;
+			if (j[4]) k[5] = 1'b1;   if (j[5]) k[0] = 1'b1;
 		end
 		MAP_CHIP8:                           // Fire = virtual F = physical B6
 			if (j[4]) k[6] = 1'b1;
+		MAP_CLIMB: begin
+			if (j[4]) k[1] = 1'b1;           // replay after game over
+			if (j[5] && j[1]) k[4] = 1'b1;  // Outbreak double-speed modifier
+			if (j[5] && j[0]) k[6] = 1'b1;
+		end
+		MAP_EXPLORER: begin
+			case (j[3:0])
+			4'b1010: k[1] = 1'b1;
+			4'b1001: k[3] = 1'b1;
+			4'b0110: k[7] = 1'b1;
+			4'b0101: k[9] = 1'b1;
+			default: begin
+				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+			end
+			endcase
+			if (j[5]) k[5] = 1'b1;           // lock target
+		end
 		default: ;                           // Bowling: keypad B unused
 		endcase
 		map_padB = k;
 	end
 endfunction
 
-// TODO: Make MAP_PADDLE 2-player-compatible: the right-hand stick should drive the 
-// B-side, and the left-hand stick should drive the A-side. The current implementation 
-// is single-player only. 
 wire profile_1p = (profile == MAP_SPACEWAR) || (profile == MAP_FREEWAY) ||
                   (profile == MAP_BOWLING)  || (profile == MAP_NONE) ||
                   (profile == MAP_HOMEBREW) || (profile == MAP_GUNFIGHTER) ||
                   (profile == MAP_8WAY)     || (profile == MAP_DOODLE) ||
-                  (profile == MAP_CLEAR_ONLY) || (profile == MAP_PADDLE) ||
-                  (profile == MAP_CHIP8);
+                  (profile == MAP_RACE)     || (profile == MAP_TENNIS) ||
+                  (profile == MAP_CHIP8)    || (profile == MAP_CLIMB) ||
+                  (profile == MAP_EXPLORER);
 wire one_player = (players == 2'd1) || ((players == 2'd0) && profile_1p);
 
 // Direct A0..A9/B0..B9 bindings and Start work from either stick: MiSTer maps
 // each input device independently, so a binding only exists where the user
-// made one. Start presses the cartridge's start key on keypad A.
+// made one. Start presses the cartridge's start key on keypad A when that key
+// is known, except for direct-start profiles.
 reg [9:0] directA, directB;
 integer dk;
 always @* begin
@@ -985,16 +1017,19 @@ always @* begin
 	end
 end
 wire       start_press = joystick_0[6] | joystick_1[6];
-wire [3:0] active_start_key = ((profile == MAP_GUNFIGHTER) || (profile == MAP_DOODLE) ||
-	                          (profile == MAP_CHIP8)) ? 4'd1 : start_key;
-wire [9:0] start_keys       = ((profile != MAP_CLEAR_ONLY) && start_press) ? (10'd1 << active_start_key) : 10'd0;
+wire [3:0] active_start_key = (profile == MAP_TENNIS) ? (one_player ? 4'd1 : 4'd2) :
+	                         (((profile == MAP_GUNFIGHTER) || (profile == MAP_DOODLE) ||
+	                           (profile == MAP_CHIP8)) ? 4'd1 : start_key);
+wire       builtin_keypad_only = no_cart && builtin_sel && (builtin_profile == MAP_NONE);
+wire       start_enabled = (active_start_key < 4'd10) && (profile != MAP_FREEWAY) &&
+	                       (profile != MAP_EXPLORER) && !builtin_keypad_only;
+wire [9:0] start_keys       = (start_enabled && start_press) ? (10'd1 << active_start_key) : 10'd0;
 
-// Gunfighter is the special case: in Auto/1P it is B-only (2/4/6/8 + 5 + 0 on
-// the right-hand pad), while in 2P it splits exactly like CROSS across both
-// pads. 8WAY follows the normal CROSS path (A-side in 1P). The explicit Clear-only profile 
-// stays quiet unless the user binds a direct A/B key manually.
+// Gunfighter and Tennis are B-only in Auto/1P. In 2P, Gunfighter splits like
+// CROSS and Tennis uses its matching A/B halves. 8WAY follows the normal CROSS
+// path (A-side in 1P).
 wire [9:0] joyA = ((profile == MAP_NONE) ? 10'd0
-                : ((profile == MAP_GUNFIGHTER) && one_player) ? 10'd0
+                : (((profile == MAP_GUNFIGHTER) || (profile == MAP_TENNIS)) && one_player) ? 10'd0
                 : ((profile == MAP_DOODLE) ? 10'd0
                                           : ((profile == MAP_GUNFIGHTER) ? map_padA(MAP_CROSS, joystick_0)
                                                                         : map_padA(profile, joystick_0))));
@@ -1230,10 +1265,11 @@ assign ram_q = pl1_sel_q ? pl1_q
 ////////////////// SOUND ////////////////////////////////////////////////////
 //
 // Behavioral model of the Q-gated NE555, fitted to the reference recordings in
-// docs/beeper-status.md. A fresh note holds near 628.4Hz for 20ms, then descends
-// to the measured 505.2Hz floor. Q low reverses pitch through the audible release
-// while a faster hidden control trajectory preserves the gap-dependent starts
-// heard in Gunfighter. A fresh Q-high drive contour prevents retriggers from
+// docs/beeper-status.md. The internal contour holds near 628.4Hz for 20ms, then
+// descends to 505.2Hz; the output period is scaled as one curve for the selected
+// console tuning. Q low reverses pitch through the audible release while a faster
+// hidden control trajectory preserves the gap-dependent starts measured with
+// FLiP's Q-Sound Test. A fresh Q-high drive contour prevents retriggers from
 // accumulating pitch drop.
 localparam [15:0] SND_HALF_TOP    = 16'd1400;
 localparam [15:0] SND_HALF_BOTTOM = 16'd1741;
@@ -1245,12 +1281,23 @@ localparam [12:0] SND_ATTACK_STEP  = 13'd14;  // ~2ms zero-to-full
 localparam  [4:0] SND_DUTY_HIGH_PARTS = 5'd11;
 localparam  [4:0] SND_DUTY_PARTS      = 5'd17;
 localparam  [4:0] SND_DUTY_ROUND      = 5'd8;
+// Q14 full-period multipliers. Original is the December 1976 RCA demonstration
+// unit (0.9945 of the internal reference frequency). The three choices on
+// either side are one, three, and six cumulative reciprocal 31:32 steps.
+localparam [14:0] SND_TUNE_HIGHEST_Q14 = 15'd13617;
+localparam [14:0] SND_TUNE_HIGHER_Q14  = 15'd14978;
+localparam [14:0] SND_TUNE_HIGH_Q14    = 15'd15960;
+localparam [14:0] SND_TUNE_MEDIUM_Q14  = 15'd16475;
+localparam [14:0] SND_TUNE_LOW_Q14     = 15'd17006;
+localparam [14:0] SND_TUNE_LOWER_Q14   = 15'd18121;
+localparam [14:0] SND_TUNE_LOWEST_Q14  = 15'd19932;
 
 reg [15:0] snd_half;          // audible oscillator period
 reg [15:0] snd_drive_half;    // fresh Q-high contour
 reg [15:0] snd_control_half;  // recovered control state for a retrigger
 reg [15:0] snd_cnt;
 reg [15:0] snd_cycle_base;    // selected tick length shared by one high/low pair
+reg [14:0] snd_cycle_scale;   // tuning held for the same complete oscillator cycle
 reg [12:0] snd_curve_cnt;
 reg [15:0] snd_control_cnt;
 reg [15:0] snd_on_ticks;
@@ -1260,6 +1307,20 @@ reg  [9:0] snd_eb_frac;
 reg  [7:0] snd_amp;
 reg        snd_q_prev;
 reg        snd_out;
+
+function automatic [14:0] snd_tune_period_scale(input [2:0] tuning);
+begin
+	case (tuning)
+		3'd1: snd_tune_period_scale = SND_TUNE_HIGH_Q14;
+		3'd2: snd_tune_period_scale = SND_TUNE_HIGHER_Q14;
+		3'd3: snd_tune_period_scale = SND_TUNE_HIGHEST_Q14;
+		3'd4: snd_tune_period_scale = SND_TUNE_LOWEST_Q14;
+		3'd5: snd_tune_period_scale = SND_TUNE_LOWER_Q14;
+		3'd6: snd_tune_period_scale = SND_TUNE_LOW_Q14;
+		default: snd_tune_period_scale = SND_TUNE_MEDIUM_Q14;
+	endcase
+end
+endfunction
 
 // Divider-only approximation of the rounded ~190ms driven descent.
 function automatic [12:0] snd_decay_interval(input [15:0] half_period);
@@ -1279,22 +1340,16 @@ begin
 end
 endfunction
 
-// Gap-dependent hidden recovery fitted to the Gunfighter retrigger series.
+// Gap-dependent hidden recovery fitted to the controlled Q-Sound Test series.
 function automatic [15:0] snd_control_interval(input [15:0] half_period);
 begin
-	if      (half_period >= 16'd1656) snd_control_interval = 16'd200;
-	else if (half_period >= 16'd1592) snd_control_interval = 16'd250;
-	else if (half_period >= 16'd1528) snd_control_interval = 16'd350;
-	else if (half_period >= 16'd1496) snd_control_interval = 16'd500;
-	else if (half_period >= 16'd1464) snd_control_interval = 16'd800;
-	else if (half_period >= 16'd1448) snd_control_interval = 16'd1300;
-	else if (half_period >= 16'd1432) snd_control_interval = 16'd1900;
-	else if (half_period >= 16'd1424) snd_control_interval = 16'd2700;
-	else if (half_period >= 16'd1416) snd_control_interval = 16'd3800;
-	else if (half_period >= 16'd1412) snd_control_interval = 16'd5400;
-	else if (half_period >= 16'd1408) snd_control_interval = 16'd7600;
-	else if (half_period >= 16'd1404) snd_control_interval = 16'd12600;
-	else if (half_period >= 16'd1402) snd_control_interval = 16'd25000;
+	if      (half_period >= 16'd1474) snd_control_interval = 16'd435;
+	else if (half_period >= 16'd1445) snd_control_interval = 16'd2750;
+	else if (half_period >= 16'd1418) snd_control_interval = 16'd3600;
+	else if (half_period >= 16'd1410) snd_control_interval = 16'd9900;
+	else if (half_period >= 16'd1406) snd_control_interval = 16'd15000;
+	else if (half_period >= 16'd1404) snd_control_interval = 16'd25000;
+	else if (half_period >= 16'd1402) snd_control_interval = 16'd45000;
 	else                               snd_control_interval = 16'd65000;
 end
 endfunction
@@ -1318,9 +1373,14 @@ wire        snd_eb_long = (snd_eb_sum >= 11'd1024);
 wire [15:0] snd_next_base = ((snd_half == SND_HALF_TOP) && !snd_eb_long)
 	                         ? 16'd1400 : snd_half + 16'd1;
 
-// Split the former two equal phases into the measured 11:6 ratio. The rounded
-// high phase and residual low phase always sum to the same full period.
-wire [16:0] snd_full_ticks = {snd_cycle_base, 1'b0};
+// Scale the complete period before splitting it into the measured 11:6 ratio.
+// Explicitly widened operands retain all Q14 product bits. Rounding once per
+// full period keeps the high and residual low phases on one common tuning.
+wire [16:0] snd_base_full_ticks = {snd_cycle_base, 1'b0};
+wire [31:0] snd_tune_product = ({15'd0, snd_base_full_ticks}
+	                            * {17'd0, snd_cycle_scale});
+wire [31:0] snd_tune_rounded = snd_tune_product + 32'd8192;
+wire [16:0] snd_full_ticks = snd_tune_rounded[30:14];
 wire [20:0] snd_high_scaled = ({4'd0, snd_full_ticks}
 	                           * {16'd0, SND_DUTY_HIGH_PARTS})
 	                           + {16'd0, SND_DUTY_ROUND};
@@ -1337,6 +1397,7 @@ always @(posedge clk_sys) begin
 		snd_control_half <= SND_HALF_TOP;
 		snd_cnt        <= 16'd0;
 		snd_cycle_base <= 16'd1400;
+		snd_cycle_scale <= SND_TUNE_MEDIUM_Q14;
 		snd_curve_cnt  <= 13'd0;
 		snd_control_cnt <= 16'd0;
 		snd_on_ticks   <= 16'd0;
@@ -1403,6 +1464,8 @@ always @(posedge clk_sys) begin
 			else begin
 				snd_amp_cnt <= 13'd0;
 				snd_out <= 1'b0;
+				// Once inaudible, keep the stopped oscillator with the recovered control.
+				snd_half <= snd_control_half;
 			end
 		end
 		else begin
@@ -1485,6 +1548,7 @@ always @(posedge clk_sys) begin
 				// Select its base once so both phases use the same fractional period.
 				if (!snd_out) begin
 					snd_cycle_base <= snd_next_base;
+					snd_cycle_scale <= snd_tune_period_scale(beeper_tune);
 					if (snd_half == SND_HALF_TOP)
 						snd_eb_frac <= snd_eb_sum[9:0]; // modulo 1024
 					else

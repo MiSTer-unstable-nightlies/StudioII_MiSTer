@@ -25,12 +25,38 @@ key.
 
 Before adding a mapping, verify the exact image, container, machine, start
 sequence, keypad roles, and mapped actions. `tools/cart-crc.sh` hashes explicitly
-supplied images; `crc16-ccitt-hashes-by-game_20260829.txt` is the current grouped
-inventory.
+supplied images; `crc16-ccitt-hashes-by-game_20260829.txt` is the dated grouped
+inventory. Hash newer in-repo builds directly before adding them.
+
+The `Climb/Outbreak` profile maps D-pad up/left/right to `A2/A4/A6`, Fire to
+the `B1` replay key, and Extra plus left/right to Outbreak's simultaneous
+`A4+B4` / `A6+B6` fast movement. `Space Explorer` maps the eight directions on
+keypad B, Fire to `A0`, and Extra to the `B5` target lock; Start is idle because
+the program begins directly.
+
+The `Race` profile keeps the eight directional keys on keypad A and maps Fire
+to an independent `A2`. The core can therefore present `A2` acceleration and a
+direction key simultaneously; whether the original keypad accepts every such
+chord remains a hardware-testing question.
+
+The `Freeway` profile maps Start to `B0` for normal mode, Fire to `A2` for
+acceleration, Extra to `A0` for hard mode, and D-pad Down to the `A8` brake.
+Its left/right steering remains on `B4/B6`.
+
+The `Tennis` profile defaults to one-player Squash: Start selects `A1` and the
+first controller drives keypad B. With Players set to two, Start selects `A2`
+Tennis and the controllers drive keypads A and B respectively. D-pad up/down
+maps to `2/8`, left/Fire/right selects racket size `4/5/6`, and Extra maps to
+that player's `0` pause key.
 
 ## Current boundary
 
-The compiled profile system is functional but incomplete and is scheduled for
-replacement by one external, versioned mapping database. Do not extend it with a
-parallel path or title-specific RTL. Until that replacement lands, keep fixes
-small, preserve manual keypad access, and leave unknown controls unmapped.
+The controller system is accepted complete: verified cartridge and resident-game
+profiles, Auto/Manual mapping, Auto/1/2-player selection, Numstick assignment,
+and the manual keypad paths form one coherent input model. The compiled profile
+system remains its source of truth; no external replacement or parallel profile
+path is planned.
+
+Keep any evidence-backed additions in the shared CRC-to-profile table rather
+than adding title-specific RTL. Preserve manual keypad access and leave unknown
+controls unmapped.

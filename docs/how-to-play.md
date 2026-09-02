@@ -67,7 +67,7 @@ This table records the minimum input shape needed for a useful controller profil
 | Classic CHIP-8 programs | Studio II / III | Load `.ch8` directly | D-pad `5/7/8/9`; Start `1`; Fire `F`; Extra `0` |
 | Resident Doodle / Patterns | Studio II | `A1` / `A2` | 8-way on B plus B5/B0 |
 | Resident Bowling | Studio II | `A3` | Cross plus center, alternating A/B |
-| Resident Freeway | Studio II | `A4`, then A5 | Cross on A; B5 selects difficult start |
+| Resident Freeway | Studio II | `A4`, then B0/A0 | B4/B6 steer; A2 accelerates; A8 brakes |
 | Resident Addition | Studio II | `A5` | Full numeric keypad |
 | Baseball | Studio II / Visicom | `A0` | A/B cross plus center; roles swap |
 | Biorhythm | Studio II | `A0` | Full numeric keypad B |
@@ -88,8 +88,10 @@ This table records the minimum input shape needed for a useful controller profil
 | Hockey | Studio II | `A1`–`A4`, then `A8/A9` | 2/8/0 on both pads |
 | Invaders | Studio II | `A0` restarts | A4/A6 movement, B0 fire |
 | Invasion, The | Studio II | `A1`–`A6` difficulty | A4/A6 movement, A5 fire |
+| Flappy Pixel | Studio II | not yet documented | A5 flap; existing 8-way profile fits |
 | Kaboom | Studio II | `A0` | A4/A6 movement |
 | Pacman | Studio II | `A0` | A2/A4/A6 and B8 |
+| Race | Studio II / Visicom | not yet documented | 8-way A; A2 acceleration can be held while steering |
 | Scramble | Studio II | `A6` or `B6` | 2/4/8/0; either pad |
 | Space Explorer | Studio II | program starts directly | 8-way B, B5 lock, A0 fire |
 | Visicom resident games | Visicom | `A1/A2/A3/A4/A7` | Varies; mostly cross/full keypad |
@@ -120,8 +122,8 @@ The standard Studio II firmware contains five selectable programs.
 
 ### Freeway — `A4`
 
-- `A5` starts the normal game; `B5` starts the difficult game.
-- `A2` accelerates, `A8` brakes, and `A4/A6` steer left/right.
+- `B0` starts the normal game; `A0` starts the difficult game.
+- `A2` accelerates, `A8` brakes, and `B4/B6` steer left/right.
 - Avoid the computer car. Distance is scored after two minutes.
 
 ### Addition — `A5`
@@ -156,7 +158,7 @@ Press CLEAR before selecting a game.
 
 In Guess the Number, enter guesses on the active keypad. The three-digit clue counts correct digits and positions: `000` means none correct and `006` means the number is solved. Intermediate totals combine correctly placed and misplaced digits. Digits may repeat and zero is valid.
 
-In Reverse, reorder 1–9 by pressing `B2`–`B9`; the digit says how many leading positions to reverse.
+The one-player Guess the Number game allows 20 guesses. In Reverse, reorder 1–9 in no more than 30 moves by pressing `B2`–`B9`; the digit says how many leading positions to reverse.
 
 ### TV Arcade III - Tennis + Squash
 
@@ -164,8 +166,12 @@ In Reverse, reorder 1–9 by pressing `B2`–`B9`; the digit says how many leadi
 - `A2`: Tennis, two players using both keypads.
 - Each player chooses racquet size on their pad: `4` small, `5` medium, `6` large.
 - Player A selects ball speed and begins: `A7` slow, `A8` normal, `A9` fast.
-- During play, `2` moves a racquet up and `8` down on its player's keypad. `0` pauses/resumes.
-- Tennis is first to 21, winning by two; Squash ends at 200.
+- During play, `2` moves a racquet up and `8` down on its player's keypad. Between serves, `0` pauses/resumes.
+- The `Tennis` controller profile starts `A1` Squash in Auto/1P and drives
+  keypad B from controller 1. With Players set to 2, Start selects `A2` Tennis
+  and controllers 1/2 drive keypads A/B. Extra supplies each player's `0`
+  pause key.
+- Tennis is first to 21, winning by two. Squash ends after 21 misses or 200 completed volleys.
 
 ### TV Arcade IV - Baseball
 
@@ -174,6 +180,7 @@ In Reverse, reorder 1–9 by pressing `B2`–`B9`; the digit says how many leadi
 - Pitcher: `2` inside curve, `5` straight, `8` outside curve. Hold about a quarter-second for a change-up.
 - Fielders: `2` up and `8` down.
 - The lower-left result is `F` foul, `1/2/3` base hit, `H` home run, `W` walk or `O` out.
+- The game lasts nine innings. Ties continue into extra innings, up to 99 innings or until a player reaches 99 runs.
 
 ### TV Arcade Series - Gunfighter + Moonship Battle
 
@@ -217,38 +224,43 @@ In Reverse, reorder 1–9 by pressing `B2`–`B9`; the digit says how many leadi
 - `A1`: manual calling; press `A1` for each new number.
 - `A2`: automatic calling every 12 seconds; `A0` stops or `A1` returns to manual.
 - `A3`: verify mode. Enter a claimed winning card on keypad B; `OK` means a number was called and `NO` means it was not.
+- In verify mode, enter the five claimed numbers as two digits each and omit the free space. When all five show `OK`, press `A0` to display their point total and play the tune; `A3` restarts an incorrectly entered verification.
 - `A4`: play the bingo tune.
 
 ### TV Mystic Series - Biorhythm
 
 - Press `A0`.
 - Enter birth date and then chart start date on keypad B in `MM DD YYYY` form.
-- The chart labels physical (`P`), emotional (`E`) and intellectual (`I`) cycles.
+- The 32-day chart labels physical (`P`), emotional (`E`) and intellectual (`I`) cycles and marks seven-day intervals.
 
 ### TV School House I
 
 - `A1`: fast response, about 10 seconds. `A2`: slow response, about 20 seconds.
 - Choose quiz 1–9 and use the matching printed quiz booklet. The displayed letter A–H identifies the question.
-- Enter answers on the active player's numeric keypad; the one-player mode uses keypad B.
+- A solo player may answer on either keypad. With two players, each uses their own keypad and races to answer first.
+- A wrong answer locks that player out for the current question. Correct answers score 1–10 points depending on speed; the quiz ends after 12 questions.
 
 ### TV School House II - Math Fun
 
 - `A1`: slow response, about 20 seconds. `A2`: fast response, about 10 seconds.
 - Choose `1` addition, `2` subtraction, `3` multiplication, `4` division or `5` combination.
 - For the first four types, then choose difficulty 1–4.
-- Players enter answers on their own numeric keypads; the one-player mode uses keypad B.
+- A solo player may answer on either keypad. With two players, each uses their own keypad and races to answer first.
+- Correct answers score 1–10 points depending on speed; a wrong answer locks that player out for the problem. The game lasts ten problems.
+- After the final score, `A0` repeats the same setup; CLEAR returns to setup selection.
 
 ### Concentration + Match
 
 - Either player starts by pressing a digit on their own keypad. The first pad used becomes the first player.
 - The starting digit controls how long symbols are exposed: `0` shows none; `9` shows them longest.
-- During play, select two cards with keypad positions 1–9. Matching symbols score one point.
+- During play, keypad A positions `1`–`9` select the nine cards on the left and keypad B positions `1`–`9` select the nine on the right.
+- A match scores one point and keeps the turn; a miss passes it. After all nine pairs are found, a new layout begins with the other player. First to 25 points wins.
 
 ### Pinball
 
 - `A1`: one player, using keypad B. `A2`: two players, alternating pads.
 - On the active pad, `1` puts a ball in play, `4/6` operate the left/right flippers and `0` reverses the ball to simulate shoving the cabinet.
-- Repeated use of `0` causes TILT. Each player receives five balls; a score above 999 ends the game.
+- Bumpers change randomly between values 2–9. Repeated use of `0` causes TILT. Each player receives five balls; a score above 999 ends the game.
 
 ## Studio III / MPT-02 programs
 
@@ -257,7 +269,9 @@ Studio II-compatible cartridges above also run on several MPT-02-family machines
 ### Grand Pack
 
 - `A1` Doodle, `A2` Patterns, `A3` Bowling, `A4` Blackjack one-player and `A5` Blackjack two-player.
-- Doodle/Patterns/Bowling follow the resident-game controls above, with colour selection available on digits `3`–`9` and `0` where supported.
+- Doodle and Patterns use the resident-game movement and drawing controls above. Their keypad A colour/tone choices are `3` red/do, `4` blue/re, `5` violet/mi, `6` green/fa, `7` yellow/sol, `8` light blue/la, `9` white/si and `0` black/do.
+- Patterns stores up to 128 entries; a colour/tone change uses three entries. `B0` begins or resumes repetition and `B5` freezes it.
+- Bowling follows the resident controls and lasts ten frames; a strike scores 20, a spare 15 and a perfect game 200.
 - In Blackjack, players can bet $01–$99; active-pad actions are `1` hit, `2` double and `0` stand.
 
 The merged Grand Pack and its two split dumps represent the same package and should share mapping research.
@@ -333,6 +347,11 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 - Only one missile can be active. Regular missiles disappear on impact; indestructible missiles must leave the screen before another shot can be fired.
 - A hit scores one point; the score rolls over after 255. The player begins with three lives. Difficulty increases every eight waves.
 
+### Flappy Pixel
+
+- `A5` flaps. The existing 8-way profile maps Fire to `A5` and therefore
+  supplies the documented play control.
+
 ### Kaboom
 
 - `A0` starts.
@@ -356,6 +375,13 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 - `A0` novice, `A1` standard, `A2` advanced, `A3` expert.
 - `A4/A6` move the reflector. Hold the corresponding `B4/B6` simultaneously for double speed.
 - After game over, `B1` plays again; CLEAR begins a fresh game.
+
+### Race
+
+- Move in eight directions on keypad A.
+- `A2` accelerates and may be held together with a direction key. The automatic
+  profile maps acceleration to Fire independently so steering remains available.
+- Physical-keypad handling of every `A2`-plus-direction chord is not yet verified.
 
 ### Rocket v1.01
 
@@ -432,7 +458,9 @@ Do not infer their controls merely from similarly named Studio II cartridges; ve
 
 The Fullset v12.1 also contains software for which the supplied sources give no dependable gameplay instructions. These are explicit research items for future profile work:
 
-- Public-domain games: Flappy Pixel, noshaders and Race.
+- Public-domain games: noshaders. Flappy Pixel and Race now have mapped play
+  controls, but their complete start/restart behavior is not yet documented;
+  Race's physical-keypad acceleration chords also need verification.
 - Non-retail/prototype software: Baseball-2K, Basic Videomate, Biorhythm prototype, Color Demo, Color Runs, Colors Stars and Trek, Gunfight, New Studio 2-5 Game Set, Numbers, Paul's Printer, Print Snoopy, Secret Number, Space War (512 Bytes), ST3CTA Tester 3, Studio 2 Quiz, the Studio II-TV Tennis variants and Tag-Race.
 - Utility/firmware images: AM4KBAS, the Studio IV interpreter images, VIP firmware and the 40th Anniversary Multi-Cart.
 
@@ -443,6 +471,7 @@ When filling a gap, record at minimum: exact Fullset filename and CRC, machine, 
 - Original RCA cartridge manuals and standalone manual transcriptions supplied with the software.
 - Paul Robson's author readmes for Asteroids, Berzerk, Combat, Hockey, Invaders, Kaboom, Pacman and Scramble.
 - Lee Romanow's author documentation for Climber, Fifteen Puzzle, Invasion, Outbreak, Rocket and TV Arcade 2012.
+- Direct project control testing for Flappy Pixel and Race.
 - Andrew Modla's `rca-studio2` data notes for Pinball, Space Explorer, the test cartridge and demonstration images.
 - Emma 02 how-to-play material for Studio II, MPT-02 and Visicom resident/cartridge software.
 - AtariAge user etxmato's documented controls for Visicom Inspiration.

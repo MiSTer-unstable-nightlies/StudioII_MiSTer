@@ -116,6 +116,13 @@ not a VGA-monitor rate. So:
 | HDMI | Unaffected — `video_freak` scales whatever it is given, which is why HDMI has always looked right. |
 | Direct Video | `direct_video=1` in `MiSTer.ini`. HDMI then carries the raw analog-timed signal for an external converter. The core needs nothing special beyond a valid raster. |
 
+The Borders option changes only the presented HBlank/VBlank window: Off masks
+the overscan around the 64x128 or 64x192 bitmap, while line/frame totals and
+HS/VS remain native. Analog sync therefore remains unchanged. The 216p crop is
+disabled in Direct Video because the framework reports no scaler dimensions;
+when active for a simultaneous 1080p scaler output it likewise masks DE without
+changing sync.
+
 ### Test procedure
 
 1. Build: `tools/quartus-build.sh` → `output_files/Studio-II.rbf`. Copy to

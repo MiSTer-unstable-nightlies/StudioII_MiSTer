@@ -12,34 +12,12 @@ technical documents; completed milestones belong in release notes and Git.
 - Build one repeatable video pipeline for colour clusters, geometry, sync, and
   temporal stability, with capture-path assumptions kept separate from source
   signal inferences.
-- Extend the audio analyzer to process all useful events consistently, including
-  confidence and contamination flags and one tuning scale per console.
-
 ## Fidelity work
-
-### Studio II audio
-
-- Add an optional Low/Medium/High beeper-pitch setting. Medium must preserve the
-  accepted hardware-derived tuning; Low and High should scale the complete
-  pitch contour without changing its envelope, retrigger behavior, duty ratio,
-  or generator state.
-- Apply one release estimator to the untrimmed archival and retail recordings
-  before deciding whether the accepted upward recovery is too slow.
-- Better constrain the early-attack knee without moving the accepted endpoints
-  or regressing protected short-note, long-note, release, and retrigger cases.
-- Produce focused test ROMs with known Q-high/Q-low intervals.
-- Seek direct electrical or line-level captures with a recorded Q trace.
-
-### Studio III audio
-
-- Add an optional PAL/NTSC programmable-tone pitch setting independent of the
-  selected video standard. The default should follow the machine standard, while
-  the override lets NTSC games use the lower PAL tuning.
-- Change only the tone divider selection; do not reset or fork generator state,
-  and do not alter video or machine timing.
 
 ### Visicom video
 
+- Keep the evidence, current comparison, and future runtime-selection contract
+  synchronized in `docs/visicom-palettes.md`.
 - Derive a supported four-colour palette from stable regions across the supplied
   hardware captures, accounting for matrix, transfer, black level, gain, gamma,
   chroma phase, and compression uncertainty.
@@ -64,21 +42,8 @@ technical documents; completed milestones belong in release notes and Git.
 - Reuse useful driver code from the legacy scripts, but do not preserve their
   aggregate scores or unverified assumptions.
 
-## External controller mappings
-
-- Audit current mappings against `docs/how-to-play.md` and primary sources.
-- Define one compact, versioned, non-executable external format covering exact
-  image identity, both keypads, player roles, start sequences, CLEAR, and manual
-  fallback.
-- Replace the compiled per-title table with one loading/interpreting path; do not
-  retain parallel compiled and external systems.
-- Add mappings only for verified images and controls. Invalid or missing data
-  must fall back safely to ordinary unmapped/manual input.
-
 ## Keyboard and keypad options
 
-- Redesign Numstick so the two analog sticks can cover both 1–9 keypad squares,
-  with an explicit, discoverable mapping for A0 and B0.
 - Add optional physical numpad support, assigning the MiSTer keyboard's numeric
   keypad to console keypad A or B.
 - Consider an Emma 02-style two-player layout: player one uses the keyboard
@@ -110,6 +75,12 @@ technical documents; completed milestones belong in release notes and Git.
 - Add two-entry, 1-bit palette support for Studio II foreground and background.
 - Add four-entry, 2-bit palette support for Visicom. Its four indexed colours
   are a natural fit for Game Boy-style palette sets.
+- Provide named Visicom presets, initially including the current/MAME, Emma 02,
+  and preferred Nicole Express source-look tables, plus a user-loadable
+  four-entry 24-bit RGB palette. Applying a custom palette must not require HDL
+  edits, synthesis, or a machine reset.
+- Label any optional flyer-, manual-, or capture-derived preset as a source
+  *look*, not as the accepted hardware palette.
 - Consider an optional expanded eight-entry palette for Studio III after the
   Studio II and Visicom paths are settled. Studio III already has a carefully
   matched hardware default, and its colour banding makes this a lower priority,

@@ -17,13 +17,35 @@ Read the focused references when relevant:
 | Studio II | CDP1861, NTSC mono | discrete beeper | primary target |
 | Studio III PAL | CDP1864 | CDP1864 tone | 312-line PAL timing |
 | Studio III NTSC | CDP1861 + CDP1862 | CDP1863 | 1861 timing with separate colour |
-| Visicom COM-100 | CDP1861 + second DMA bitplane | none | separate memory map and fixed palette |
+| Visicom COM-100 | CDP1861 + second DMA bitplane | NE555 compatibility beeper | separate memory map and fixed palette |
 
 The CPU, DMA video, raw and paged cartridges, four native firmware slots plus the CHIP-8 interpreter slot, machine memory maps, controller profiles, on-screen keypad, integer scaling, and sync-preserving same-standard resets are implemented. The loader intentionally models only 4 KB of cartridge address space; high-page diagnostics such as ST3CTA Tester 3 remain unsupported.
 
 ## Module and clock map
 
 `Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU, memory maps, cartridge loader, keypad/controller mapping, Studio II beeper, and machine selection.
+
+The Studio II/Visicom NE555 pitch selector occupies `status[19:17]`. Codes 0--6
+are Original, High, Higher, Highest, Lowest, Lower, and Low; unused code 7
+decodes to Original. Low/High, Lower/Higher, and Lowest/Highest apply one, three,
+and six cumulative steps of the original reciprocal 31:32 frequency ratio.
+Tuning scales the latched full oscillator period before its 11:6 phase split,
+leaving the accepted state trajectory and all time-domain envelope behavior
+unchanged.
+The OSD exposes the selector for Studio II and Visicom and hides it for both
+Studio III variants.
+
+The Studio III NTSC tone-pitch selector occupies `status[20]`. Zero keeps the
+standalone CDP1863's native pitch; one selects the CDP1864 divide-by-four stage
+and matches PAL pitch. The OSD enables the field only when the active machine is
+Studio III NTSC. It changes only the divider-stage input to the shared generator,
+so the latch, counter, output phase, and reset behavior remain a single live state.
+
+Video crop enable occupies `status[21]`, crop offset `status[25:22]`, and border
+hiding `status[26]`. The crop follows the common NES/SNES MiSTer convention: it
+is enabled only for an un-doubled 1920x1080 scaler output and supplies a 216-line
+window to `video_freak`. Border hiding selects bitmap-window blanking while
+leaving device counters and HS/VS unchanged.
 
 Live video modules:
 
@@ -35,7 +57,7 @@ Live video modules:
 
 `clk_sys` is about 7.040229 MHz. `ce_pix` divides it by four to the approximately 1.760 MHz machine timebase; CPU machine cycles occur every eight `ce_pix` pulses. MiSTer video is resampled into `clk_vid` at about 42.24 MHz and presented to `video_mixer` at about 7.04 MHz, repeating each native pixel four times.
 
-The Verilator harness normally holds `ce_pix` high. Use `--ce4` for reset release, CLEAR, DMA/CPU phase, or other clock-structure work, and `--press-phase N` to sweep phase-sensitive input. The harness instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS boot ordering, Apply classification, or F1/F2 sync preservation.
+The Verilator harness normally holds `ce_pix` high. Use `--ce4` for reset release, CLEAR, DMA/CPU phase, or other clock-structure work, `--press-phase N` to sweep phase-sensitive input, `--beeper-tune medium|high|higher|highest|lowest|lower|low` to select the Studio II tuning (`medium` selects Original), and `--ntsc-tone-pitch original|pal` to select the Studio III NTSC pitch. The harness instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS boot ordering, Apply classification, OSD menu masking, or F1/F2 sync preservation.
 
 ## Video behavior
 
@@ -49,7 +71,10 @@ rcastudioii sync + blanking + RGB
     -> MiSTer framework
 ```
 
-`video_mixer` derives raster DE from HBlank/VBlank. The core's `video_de`/`bitmap_de` is only for simulation and bitmap capture.
+`video_mixer` derives raster DE from HBlank/VBlank. The core's
+`video_de`/`bitmap_de` is only for simulation and bitmap capture.
+The top level may instead present the bitmap-specific HBlank/VBlank when Borders
+is Off; this changes the active window without changing raster or sync timing.
 
 The CDP1861 path has 112 native pixel times and 262 lines per frame. Raster active starts at pixel 24 and is 88 pixels wide. Bitmap DMA occupies pixels 40–103, leaving the authored window 16 pixels from the raster's left edge and eight from the right. Do not move the bitmap window to centre it; adjust porches/blanking and revalidate timing instead.
 
@@ -57,10 +82,15 @@ The CDP1864 path has 112 native pixel times, 312 lines, and a 192-line display. 
 
 Integer scaling depends on two top-level integration details:
 
-1. `video_mixer.LINE_LENGTH` is 352 (88 active source pixels x4).
+1. `video_mixer.LINE_LENGTH` is 352, the full 88-pixel raster width x4 and the
+   maximum needed when the optional 64-pixel borderless window is selected.
 2. VS is delayed by one `CE_PIXEL` only on the `video_freak` input so its final active-line count is not overwritten by a same-edge reset.
 
 The OSD exposes scale modes 0–3 with `.SCALE({1'b0, status[12:11]})`; mode 4 is intentionally absent.
+At a 1920x1080 scaler resolution, the optional 216-line vertical crop permits
+the existing integer modes to select 5x vertically. Crop offset uses the standard
+MiSTer `0, 2, 4, 8, 10, 12, -12, -10, -8, -6, -4, -2` choices. Other HDMI
+resolutions, Direct Video, and forced scandoubling leave vertical crop disabled.
 
 ## Reset and machine selection
 
@@ -155,7 +185,7 @@ Controller architecture and profile identification are documented in
 - The CDP1861 requests eight DMA-OUT cycles for each displayed scanline and the CPU supplies bytes through R0. Software repeats 32 logical bitmap rows into 128 active bitmap lines.
 - The Studio II is NTSC-only and uses an adjusted RC oscillator; its approximately 1.760 MHz clock is a practical model, not an exact crystal constant.
 - CDP1861/CDP1864 EF timing leads nominal line boundaries deliberately. Interrupt and DMA requests are accepted at instruction boundaries, DMA remains asserted until serviced, and parity adaptation may move service by one machine cycle.
-- `CON` is captured with each luminance DMA byte. Studio III NTSC is a 1861+1862+1863 machine, not a retimed 1864; its 1863 tone is four times the 1864-integrated tone for the same latch.
+- `CON` is captured with each luminance DMA byte. Studio III NTSC is a 1861+1862+1863 machine, not a retimed 1864; its native 1863 tone is four times the 1864-integrated tone for the same latch. The optional PAL-pitch setting selects the shared model's divide-by-four stage without resetting or duplicating generator state.
 - In the CPU Cx row, `C4` is NOP and `C5-C7`/`CC-CF` are long skips.
 
 ## Verification and local layout

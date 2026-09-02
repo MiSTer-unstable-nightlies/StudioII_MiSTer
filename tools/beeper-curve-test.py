@@ -9,6 +9,8 @@ import re
 PIXEL_CLOCK = 1_760_229
 RTL = Path(__file__).resolve().parents[1] / "rtl" / "rcastudioii.sv"
 TEXT = RTL.read_text(encoding="utf-8")
+TOP_LEVEL = RTL.parents[1] / "Studio-II.sv"
+TOP_TEXT = TOP_LEVEL.read_text(encoding="utf-8")
 
 
 def parameter(name: str) -> int:
@@ -27,6 +29,15 @@ ATTACK_STEP = parameter("SND_ATTACK_STEP")
 DUTY_HIGH_PARTS = parameter("SND_DUTY_HIGH_PARTS")
 DUTY_PARTS = parameter("SND_DUTY_PARTS")
 DUTY_ROUND = parameter("SND_DUTY_ROUND")
+TUNE_HIGHEST = parameter("SND_TUNE_HIGHEST_Q14")
+TUNE_HIGHER = parameter("SND_TUNE_HIGHER_Q14")
+TUNE_HIGH = parameter("SND_TUNE_HIGH_Q14")
+TUNE_MEDIUM = parameter("SND_TUNE_MEDIUM_Q14")
+TUNE_LOW = parameter("SND_TUNE_LOW_Q14")
+TUNE_LOWER = parameter("SND_TUNE_LOWER_Q14")
+TUNE_LOWEST = parameter("SND_TUNE_LOWEST_Q14")
+TUNE_DENOMINATOR = 1 << 14
+TUNE_ROUND = 1 << 13
 
 bands = [
     (int(limit), int(interval))
@@ -143,6 +154,7 @@ class Beeper:
                     self.amp_count += 1
             else:
                 self.amp_count = 0
+                self.half = self.control_half
             return
 
         if previous_q:
@@ -220,8 +232,26 @@ def check(label: str, condition: bool, detail: str) -> None:
     print(f"ok  {label}: {detail}")
 
 
-def phase_lengths(base_ticks: int):
-    full_ticks = 2 * base_ticks
+def tune_scale(code: int) -> int:
+    return {
+        0: TUNE_MEDIUM,
+        1: TUNE_HIGH,
+        2: TUNE_HIGHER,
+        3: TUNE_HIGHEST,
+        4: TUNE_LOWEST,
+        5: TUNE_LOWER,
+        6: TUNE_LOW,
+        7: TUNE_MEDIUM,
+    }[code]
+
+
+def tuned_full_ticks(base_ticks: int, tune_code: int) -> int:
+    product = 2 * base_ticks * tune_scale(tune_code)
+    return (product + TUNE_ROUND) // TUNE_DENOMINATOR
+
+
+def phase_lengths(base_ticks: int, tune_code: int):
+    full_ticks = tuned_full_ticks(base_ticks, tune_code)
     high_ticks = (full_ticks * DUTY_HIGH_PARTS + DUTY_ROUND) // DUTY_PARTS
     return high_ticks, full_ticks - high_ticks
 
@@ -232,26 +262,81 @@ check(
     f"{DUTY_HIGH_PARTS}:{DUTY_PARTS - DUTY_HIGH_PARTS} high/low target",
 )
 
-for label, base_ticks in (
-    ("top short", TOP),
-    ("top long", TOP + 1),
-    ("bottom", BOTTOM + 1),
-):
-    high_ticks, low_ticks = phase_lengths(base_ticks)
-    full_ticks = 2 * base_ticks
+check(
+    "three-bit tuning selector",
+    'O[19:17],NE555 pitch,Original,High,Higher,Highest,Lowest,Lower,Low' in TOP_TEXT
+    and ".beeper_tune(status[19:17])" in TOP_TEXT,
+    "status[19:17] exposes seven ordered tuning values",
+)
+check(
+    "NE555 menu availability",
+    re.search(
+        r"\(machine_active == 2'd1\)\s*\|\|\s*"
+        r"\(machine_active == 2'd2\).*?16'h0010",
+        TOP_TEXT,
+        re.S,
+    )
+    is not None,
+    "Studio III PAL/NTSC hide the selector; Studio II and Visicom expose it",
+)
+check(
+    "reserved tuning fallback",
+    tune_scale(7) == TUNE_MEDIUM
+    and "default: snd_tune_period_scale = SND_TUNE_MEDIUM_Q14;" in TEXT,
+    "unused code 7 decodes to Original",
+)
+check(
+    "one/three/six-step tuning scales",
+    (TUNE_HIGHEST, TUNE_HIGHER, TUNE_HIGH, TUNE_MEDIUM,
+     TUNE_LOW, TUNE_LOWER, TUNE_LOWEST)
+    == (13617, 14978, 15960, 16475, 17006, 18121, 19932),
+    "Q14 endpoints follow cumulative -6/-3/-1/0/+1/+3/+6 period steps",
+)
+
+tuning_targets = {
+    "Original": (0, (624.6, 625.1), (502.2, 502.8)),
+    "High": (1, (644.8, 645.4), (518.3, 519.0)),
+    "Higher": (2, (687.0, 687.6), (552.4, 553.0)),
+    "Highest": (3, (755.7, 756.4), (607.5, 608.2)),
+    "Lowest": (4, (516.2, 516.9), (415.0, 415.7)),
+    "Lower": (5, (568.0, 568.6), (456.4, 457.0)),
+    "Low": (6, (605.2, 605.8), (486.5, 487.1)),
+}
+for tune_name, (tune_code, top_window, bottom_window) in tuning_targets.items():
+    for label, base_ticks in (
+        ("top short", TOP),
+        ("top long", TOP + 1),
+        ("bottom", BOTTOM + 1),
+    ):
+        high_ticks, low_ticks = phase_lengths(base_ticks, tune_code)
+        full_ticks = tuned_full_ticks(base_ticks, tune_code)
+        check(
+            f"{tune_name} {label} phase lengths",
+            high_ticks + low_ticks == full_ticks
+            and abs(high_ticks - full_ticks * 11 / 17) <= 0.5,
+            f"{high_ticks}+{low_ticks}={full_ticks} ticks, "
+            f"{high_ticks / full_ticks:.3%} high",
+        )
+
+    short_ticks = tuned_full_ticks(TOP, tune_code)
+    long_ticks = tuned_full_ticks(TOP + 1, tune_code)
+    top_ticks = short_ticks * (1 - 574 / 1024) + long_ticks * (574 / 1024)
+    top_hz = PIXEL_CLOCK / top_ticks
+    bottom_hz = PIXEL_CLOCK / tuned_full_ticks(BOTTOM + 1, tune_code)
     check(
-        f"{label} phase lengths",
-        high_ticks + low_ticks == full_ticks
-        and abs(high_ticks - full_ticks * 11 / 17) <= 0.5,
-        f"{high_ticks}+{low_ticks}={full_ticks} ticks, {high_ticks / full_ticks:.3%} high",
+        f"{tune_name} tuning fundamentals",
+        top_window[0] <= top_hz <= top_window[1]
+        and bottom_window[0] <= bottom_hz <= bottom_window[1],
+        f"top {top_hz:.2f} Hz, bottom {bottom_hz:.2f} Hz",
     )
 
-top_hz = PIXEL_CLOCK / (2 * (TOP + 574 / 1024))
-bottom_hz = PIXEL_CLOCK / (2 * (BOTTOM + 1))
+reference_top_hz = PIXEL_CLOCK / (2 * (TOP + 574 / 1024))
+reference_bottom_hz = PIXEL_CLOCK / (2 * (BOTTOM + 1))
 check(
-    "duty-cycle fundamentals",
-    628.3 <= top_hz <= 628.5 and 505.1 <= bottom_hz <= 505.3,
-    f"top {top_hz:.2f} Hz, bottom {bottom_hz:.2f} Hz",
+    "internal reference contour",
+    628.3 <= reference_top_hz <= 628.5
+    and 505.1 <= reference_bottom_hz <= 505.3,
+    f"top {reference_top_hz:.2f} Hz, bottom {reference_bottom_hz:.2f} Hz",
 )
 
 
@@ -259,6 +344,14 @@ check(
     "monotonic slowdown",
     all(a < b for a, b in zip(intervals, intervals[1:])),
     f"step intervals {intervals}",
+)
+control_intervals = [interval for _, interval in control_bands] + [
+    int(control_last.group(1))
+]
+check(
+    "monotonic recovery slowdown",
+    all(a < b for a, b in zip(control_intervals, control_intervals[1:])),
+    f"step intervals {control_intervals}",
 )
 
 pip = Beeper()
@@ -322,8 +415,10 @@ check(
 release.run_ms(19, False)
 check(
     "silent recovery",
-    release.amp == 0 and not release.q_prev,
-    f"level {release.amp}, continuing at {release.hz:.2f} Hz",
+    release.amp == 0
+    and not release.q_prev
+    and release.half == release.control_half,
+    f"level {release.amp}, synchronized at {release.hz:.2f} Hz",
 )
 
 retrigger = Beeper()
@@ -371,54 +466,70 @@ principal_interval = 1200 * math.log2(second_crest_hz / 628.4)
 trough_interval = 1200 * math.log2(second_crest_hz / first_trough_hz)
 check(
     "Concentration second-pulse crest",
-    558 <= second_crest_hz <= 562,
+    539 <= second_crest_hz <= 542,
     f"{second_crest_hz:.2f} Hz after a representative 120/12ms retrigger",
 )
 check(
     "Concentration pitch windows",
-    -205 <= principal_interval <= -195 and 130 <= trough_interval <= 140,
+    -265 <= principal_interval <= -255 and 70 <= trough_interval <= 80,
     f"{principal_interval:.1f} cents from principal, "
     f"+{trough_interval:.1f} cents from first trough",
 )
 
-# Gunfighter's ROM keeps a shot high for one 60Hz frame and a cactus high for
-# seven. The labeled hardware clips cover cactus-to-shot gaps of 2--9 Q-low
-# frames. Measure 11ms into the following shot, the center of its useful ridge.
-# These medians are acoustic estimates rather than exact electrical readings, so
-# the aggregate fit and monotonic contour are stronger constraints than any one
-# row. The former fixed-ceiling model misses the 2--4 frame cases by 27--38Hz.
-gunfighter_hardware = {
-    2: 596.8,
-    3: 605.4,
-    4: 613.4,
-    5: 616.0,
-    6: 618.7,
-    9: 626.6,
+# FLiP's Q-Sound Test drives the same long note followed by selectable low gaps.
+# The effective gaps come from the recorded pulse periods. Targets are the
+# steady retrigger crests, normalized to the 628.4Hz fresh pitch in each file.
+q_test_hardware = {
+    30: (60.238, 596.48),
+    50: (105.499, 609.24),
+    80: (160.692, 620.54),
+    100: (205.884, 623.75),
 }
-gunfighter_model = {}
-for gap_frames in gunfighter_hardware:
+q_test_model = {}
+for setting, (gap_ms, _) in q_test_hardware.items():
+    sequence = Beeper()
+    sequence.run_ms(205.884, True)
+    sequence.run_ms(gap_ms, False)
+    retrigger_hz = []
+    for _ in range(45):
+        sequence.run_ms(1, True)
+        retrigger_hz.append(sequence.hz)
+    q_test_model[setting] = max(retrigger_hz)
+
+q_test_rmse = math.sqrt(
+    sum(
+        (q_test_model[setting] - target) ** 2
+        for setting, (_, target) in q_test_hardware.items()
+    ) / len(q_test_hardware)
+)
+check(
+    "Q-Sound Test gap-dependent retrigger",
+    q_test_rmse <= 0.8
+    and all(
+        q_test_model[a] < q_test_model[b]
+        for a, b in zip(q_test_model, list(q_test_model)[1:])
+    ),
+    f"{q_test_rmse:.2f}Hz RMS error across "
+    + ", ".join(
+        f"{setting}={q_test_model[setting]:.1f}Hz" for setting in q_test_model
+    ),
+)
+
+# Preserve the game cadence as a monotonic family without treating earlier
+# frame-derived acoustic estimates as direct Q timing measurements.
+gunfighter_model = []
+for gap_frames in (2, 3, 4, 5, 6, 9):
     sequence = Beeper()
     sequence.run_ms(7 * 1000 / 60, True)
     sequence.run_ms(gap_frames * 1000 / 60, False)
     sequence.run_ms(11, True)
-    gunfighter_model[gap_frames] = sequence.hz
-
-gunfighter_rmse = math.sqrt(
-    sum(
-        (gunfighter_model[gap] - gunfighter_hardware[gap]) ** 2
-        for gap in gunfighter_hardware
-    ) / len(gunfighter_hardware)
-)
+    gunfighter_model.append(sequence.hz)
 check(
-    "Gunfighter gap-dependent retrigger",
-    gunfighter_rmse <= 3.5
-    and all(
-        gunfighter_model[a] < gunfighter_model[b]
-        for a, b in zip(gunfighter_model, list(gunfighter_model)[1:])
-    ),
-    f"{gunfighter_rmse:.2f}Hz RMS error across "
-    + ", ".join(
-        f"{gap}f={gunfighter_model[gap]:.1f}Hz" for gap in gunfighter_model
+    "Gunfighter retrigger ordering",
+    all(a < b for a, b in zip(gunfighter_model, gunfighter_model[1:])),
+    ", ".join(
+        f"{gap}f={hz:.1f}Hz"
+        for gap, hz in zip((2, 3, 4, 5, 6, 9), gunfighter_model)
     ),
 )
 
