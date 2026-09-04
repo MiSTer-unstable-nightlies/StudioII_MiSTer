@@ -455,7 +455,7 @@ static void dump_state(FILE* f, long frame, const FrameGrabber& fg, bool with_vr
 
     fprintf(f, "-- Cartridge mapping --\n");
     {
-        static const char* pn[] = {"NONE","CROSS","SPACEWAR","FREEWAY","BOWLING","BASEBALL","HOMEBREW","GUNFIGHTER","8WAY","DOODLE","HB2P","RACE","TENNIS","CHIP8","CLIMB","EXPLORER"};
+        static const char* pn[] = {"NONE","CROSS","SPACEWAR","FREEWAY","BOWLING","BASEBALL","HOMEBREW","VISICOM_ART","8WAY","DOODLE","HB2P","RACE","GUNFIGHTER_TENNIS","CHIP8","CLIMB","EXPLORER"};
         int pr = top->rootp->top__DOT__rcastudio__DOT__profile;
         fprintf(f, "  cart CRC16 %04X  ->  profile %d (%s)\n",
                 top->rootp->top__DOT__rcastudio__DOT__cart_crc, pr,
@@ -516,7 +516,7 @@ static void usage(const char* argv0) {
 "    --chip8-fw FILE      Marcel's 768-byte companion, ioctl index $0103\n"
 "    --manual-chip8-fw FILE  same image through the F4 OSD path, ioctl index 4\n"
 "    --ch8 FILE           CHIP-8 program, ioctl index 3\n"
-"    --loader-check       verify all five ROM slots and CHIP-8 address mapping\n"
+"    --loader-check       verify ROM loading, CHIP-8 mapping and firmware profiles\n"
 "\n"
 "  Run length\n"
 "    --frames N           stop after N video frames (default 300)\n"
@@ -551,9 +551,9 @@ static void usage(const char* argv0) {
 "  Input\n"
 "    --joy-map N          OSD \"Joystick\" profile, and switch \"Mapping\" to Manual:\n"
 "                         0 none/keypad-only, 1 cross, 2 spacewar, 3 freeway,\n"
-"                         4 bowling, 5 baseball, 6 homebrew, 7 gunfighter,\n"
+"                         4 bowling, 5 baseball, 6 homebrew, 7 Visicom Art,\n"
 "                         8 8-way, 9 doodle, 10 2P homebrew, 11 Race,\n"
-"                         12 Tennis, 13 CHIP-8, 14 Climber/Outbreak,\n"
+"                         12 Gunfighter/Tennis, 13 CHIP-8, 14 Climber/Outbreak,\n"
 "                         15 Space Explorer. Omit for auto-detection.\n"
 "    --joy MASK@F[:H]     drive joystick 0 with MASK (bit0 right, 1 left, 2 down,\n"
 "                         3 up, 4 fire, 5 extra, 6 start, 17:8 A0..A9,\n"
@@ -1129,6 +1129,136 @@ int main(int argc, char** argv) {
             }
         }
 
+        // With no cartridge, the first recognized firmware-menu key selects
+        // the resident game's automatic profile and later keys must not change
+        // it. Cover both Studio III timings because they use separate machine
+        // values even though their Grand Pack menu is the same.
+        struct FirmwareProfileCase {
+            unsigned machine, key, profile, followup;
+            const char* name;
+        };
+        const FirmwareProfileCase firmware_profiles[] = {
+            {0, 1, 9, 3, "Studio II Doodle"},
+            {0, 2, 9, 3, "Studio II Patterns"},
+            {0, 3, 4, 4, "Studio II Bowling"},
+            {0, 4, 3, 3, "Studio II Freeway"},
+            {0, 5, 0, 3, "Studio II Addition"},
+            {1, 1, 9, 3, "Studio III PAL Doodle"},
+            {1, 2, 9, 3, "Studio III PAL Patterns"},
+            {1, 3, 4, 4, "Studio III PAL Bowling"},
+            {1, 4, 0, 3, "Studio III PAL Blackjack 1P"},
+            {1, 5, 0, 3, "Studio III PAL Blackjack 2P"},
+            {2, 1, 9, 3, "Studio III NTSC Doodle"},
+            {2, 2, 9, 3, "Studio III NTSC Patterns"},
+            {2, 3, 4, 4, "Studio III NTSC Bowling"},
+            {2, 4, 0, 3, "Studio III NTSC Blackjack 1P"},
+            {2, 5, 0, 3, "Studio III NTSC Blackjack 2P"},
+            {3, 1, 7, 2, "Visicom Doodle"},
+            {3, 2, 4, 1, "Visicom Bowling"},
+            {3, 3, 7, 2, "Visicom Patterns"},
+            {3, 4, 3, 2, "Visicom Freeway"},
+            {3, 7, 0, 2, "Visicom Addition"},
+        };
+        auto clock_core = [&]() {
+            top->clk_48 = 0;
+            top->eval();
+            top->clk_48 = 1;
+            top->eval();
+            top->clk_48 = 0;
+            top->eval();
+        };
+        RS(chip8_loaded) = 0;
+        RS(cart_crc) = 0xffff;
+        RS(start_key) = 1;
+        top->joy_manual = 0;
+        top->joystick_0 = 0;
+        top->joystick_1 = 0;
+        for (const FirmwareProfileCase& c : firmware_profiles) {
+            top->machine = c.machine;
+            RS(builtin_sel) = 0;
+            RS(builtin_profile) = 0;
+            RS(playerA) = 1u << c.key;
+            clock_core();
+            RS(playerA) = 0;
+            top->eval();
+            if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != c.profile) {
+                printf("FAIL %s selected profile %u (selected=%u), expected %u\n",
+                       c.name, (unsigned)RS(auto_profile),
+                       (unsigned)RS(builtin_sel), c.profile);
+                failures++;
+            }
+
+            RS(playerA) = 1u << c.followup;
+            clock_core();
+            RS(playerA) = 0;
+            top->eval();
+            if ((unsigned)RS(auto_profile) != c.profile) {
+                printf("FAIL %s changed to profile %u after a later menu key\n",
+                       c.name, (unsigned)RS(auto_profile));
+                failures++;
+            }
+        }
+
+        // Non-menu keys must not consume the Visicom's first valid selection.
+        top->machine = 3;
+        RS(builtin_sel) = 0;
+        RS(builtin_profile) = 0;
+        RS(playerA) = 1u << 5;
+        clock_core();
+        RS(playerA) = 0;
+        top->eval();
+        if (RS(builtin_sel)) {
+            printf("FAIL Visicom non-menu A5 consumed firmware profile selection\n");
+            failures++;
+        }
+        RS(playerA) = 1u << 7;
+        clock_core();
+        RS(playerA) = 0;
+        top->eval();
+        if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != 0u) {
+            printf("FAIL Visicom A7 after non-menu key did not select keypad-only profile\n");
+            failures++;
+        }
+
+        // Start generates the default A1 selection and must also arm Visicom's
+        // resident Doodle profile, as it already does for the Studio menus.
+        RS(builtin_sel) = 0;
+        RS(builtin_profile) = 0;
+        top->joystick_0 = 1u << 6;
+        clock_core();
+        top->joystick_0 = 0;
+        top->eval();
+        if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != 7u) {
+            printf("FAIL Visicom Start did not select the resident Doodle profile\n");
+            failures++;
+        }
+        top->joystick_0 = 1u << 6;
+        top->eval();
+        if ((unsigned)RS(joyA_active) != (1u << 1) || (unsigned)RS(joyB_active) != 0u) {
+            printf("FAIL Visicom Doodle Start mapped to A=$%03X B=$%03X, expected A=$002 B=$000\n",
+                   (unsigned)RS(joyA_active), (unsigned)RS(joyB_active));
+            failures++;
+        }
+        top->joystick_0 = 0;
+        top->eval();
+
+        // Patterns uses A3 both to select the program and to begin/resume its
+        // repetition. A0 remains available through its direct binding or Numstick A.
+        RS(builtin_sel) = 0;
+        RS(builtin_profile) = 0;
+        RS(playerA) = 1u << 3;
+        clock_core();
+        RS(playerA) = 0;
+        top->joystick_0 = 1u << 6;
+        top->eval();
+        if ((unsigned)RS(joyA_active) != (1u << 3) || (unsigned)RS(joyB_active) != 0u) {
+            printf("FAIL Visicom Patterns Start mapped to A=$%03X B=$%03X, expected A=$008 B=$000\n",
+                   (unsigned)RS(joyA_active), (unsigned)RS(joyB_active));
+            failures++;
+        }
+        top->joystick_0 = 0;
+        top->eval();
+
         // Activation follows the applied machine without discarding the game:
         // all three Studio selections use ROM4 and Visicom suppresses it.
         top->clk_48 = 0;
@@ -1194,11 +1324,27 @@ int main(int argc, char** argv) {
                                   unsigned expected_b, const char* name) {
             expect_profile_players(profile, 0, joy, 0, expected_a, expected_b, name);
         };
+        top->machine = 0;
         expect_profile(3, (1u << 4) | (1u << 5) | (1u << 1),
                        (1u << 2) | (1u << 0), 1u << 4,
-                       "Freeway accelerate+hard+left");
+                       "Studio II Freeway controls");
         expect_profile(3, 1u << 6, 0, 1u << 0, "Freeway normal Start");
-        expect_profile(8, 1u << 4, 1u << 5, 0, "Flappy Fire");
+        top->machine = 3;
+        expect_profile(3, (1u << 4) | (1u << 5) | (1u << 3) | (1u << 1),
+                       0, (1u << 5) | (1u << 2) | (1u << 4),
+                       "Visicom Freeway controls");
+        expect_profile(3, 1u << 6, 0, 1u << 0, "Visicom Freeway License A Start");
+        top->machine = 0;
+        expect_profile_players(4, 0, 1u << 4, 0, 1u << 5, 1u << 5,
+                               "Bowling Auto mirrors active pad");
+        expect_profile_players(4, 2, 1u << 3, 1u << 2, 1u << 2, 1u << 8,
+                               "Bowling two-player split");
+        expect_profile(7, (1u << 4) | (1u << 5) | (1u << 3) | (1u << 1),
+                       0, (1u << 5) | (1u << 0) | (1u << 1),
+                       "Visicom Art controls");
+        expect_profile(8, 1u << 4, 1u << 5, 1u << 5, "Flappy Fire");
+        expect_profile_players(12, 2, 1u << 6, 0, 1u << 2, 0,
+                               "Gunfighter/Tennis two-player Start");
         expect_profile(11, (1u << 4) | (1u << 1), (1u << 2) | (1u << 4), 0,
                        "Race accelerate+left");
         expect_profile_players(12, 1, (1u << 3) | (1u << 4) | (1u << 5), 0,
@@ -1265,7 +1411,7 @@ int main(int argc, char** argv) {
             top->eval();
         }
 
-        printf("CHIP-8 loader: %s (%d mismatch%s)\n", failures ? "FAIL" : "PASS",
+        printf("Loader and input checks: %s (%d mismatch%s)\n", failures ? "FAIL" : "PASS",
                failures, failures == 1 ? "" : "es");
         top->final();
         if (df != stdout) fclose(df);

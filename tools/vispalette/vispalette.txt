@@ -1,0 +1,28 @@
+Visicom Palette Utility
+=======================
+
+vispalette creates 16-byte .vcp palette files for the Toshiba Visicom COM-100
+mode of the Studio II MiSTer core.
+
+The utility prompts for RGB values (0-255) for each of the Visicom's four color
+indices and writes them to the specified .vcp file.
+
+Usage:
+
+    vispalette output.vcp
+
+Build on Linux / WSL:
+
+    gcc -O2 -Wall -Wextra -o vispalette vispalette.c
+
+Build a standalone Windows executable from WSL:
+
+    sudo apt install gcc-mingw-w64-x86-64
+    x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -static -o vispalette.exe vispalette.c
+
+VCP files contain four RGB888 colors followed by four reserved zero bytes:
+
+    R0 G0 B0 R1 G1 B1 R2 G2 B2 R3 G3 B3 00 00 00 00
+
+The format is structurally compatible with MiSTer's 16-byte Game Boy .gbp
+palette format.

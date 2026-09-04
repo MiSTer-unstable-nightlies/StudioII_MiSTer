@@ -206,21 +206,21 @@ assign BUTTONS = 0;
 `include "build_id.v"
 localparam CONF_STR = {
 	"Studio-II;v11;",
-	"F1,ST2BINROM,Load Cartridge;",
-	"F2,BINROM,Load Firmware;",
-	"F4,BIN,Load CHIP-8 Interpreter;",
-	// Main sends chip8.bin from the selected program's directory before F3.
+	"F1,ST2BIN,Load Cartridge;",
+	// Main sends chip8.bin from same dir as selected .ch8 before F3
 	"f,!chip8.bin;",
-	// Loading only allowed on Studio II and Studio III, not Visicom.
+	// Studio II/III only
 	"D3F3,CH8,Load CHIP-8;",
 	"-;",
 	// Machine held until Apply and reset
 	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
+	"F2,BINROM,Load Firmware;",
+	"F4,BIN,Load CHIP-8 Interpreter;",
 	"R[15],Apply and reset;",
 	"-;",
 	"O[6],Mapping,Auto,Manual;",
 	// Order must match localparams in rtl/rcastudioii.sv
-	"D2O[5:2],Joystick,None,Cross,Space War,Freeway,Bowling,Baseball,Homebrew,Gunfighter,8-way,Doodle,2P Homebrew,Race,Tennis,CHIP-8,Climb/Outbreak,Space Explorer;",
+	"D2O[5:2],Joystick,None,Cross,Space War,Freeway,Bowling,Baseball,Homebrew,Visicom Art,8-way,Doodle,2P Homebrew,Race,Gunfighter/Tennis,CHIP-8,Climb/Outbreak,Space Explorer;",
 	"O[8:7],Players,Auto,1,2;",
 	"O[10:9],Numstick,Off,Pad A,Pad B;",
 	"-;",
@@ -228,6 +228,7 @@ localparam CONF_STR = {
 	"D4O[19:17],NE555 pitch,Original,High,Higher,Highest,Lowest,Lower,Low;",
 	"D5O[20],CDP1863 pitch,Original,PAL;",
 	"-;",
+	"D7F5,VCP,Load Visicom Palette;",
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"d6O[21],Vertical Crop,Disabled,216p (5x);",
 	"d6O[25:22],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
@@ -329,15 +330,31 @@ wire ce_pix = (ce_cnt == 2'd0);
 wire joy_clear = joystick_0[7] | joystick_1[7];
 wire clear_request = status[1] | clear_key | joy_clear;
 
-// Preserve raster timing on soft resets
+// Preserve raster timing on soft resets. F5 is a presentation-only Visicom
+// palette load and must not reach the machine loader or otherwise disturb the
+// emulated machine.
+// Keep the classification for the whole transaction: Main may update the live
+// file index while replacing one selection, before download has gone inactive.
+reg       vis_palette_latched = 1'b0;
+wire      vis_palette_index = ioctl_index[5:0] == 6'd5;
+wire      vis_palette_download = ioctl_download &&
+	                              (vis_palette_index || vis_palette_latched);
+wire      machine_download = ioctl_download && !vis_palette_download;
 wire      user_download_now = (ioctl_index[5:0] == 6'd1) ||
 	                          (ioctl_index[5:0] == 6'd2) ||
 	                          (ioctl_index[5:0] == 6'd3) ||
 	                          (ioctl_index[5:0] == 6'd4);
 reg       download_soft_latched = 1'b0;
 reg [7:0] download_reset_cnt = 8'd0;
-wire      download_reset = ioctl_download | (download_reset_cnt != 0);
-wire      download_soft = ioctl_download ? user_download_now : download_soft_latched;
+wire      download_reset = (ioctl_download && !vis_palette_download) |
+	                       (download_reset_cnt != 0);
+wire      download_soft = (ioctl_download && !vis_palette_download) ?
+	                      user_download_now : download_soft_latched;
+
+always @(posedge clk_sys) begin
+	if (!ioctl_download)        vis_palette_latched <= 1'b0;
+	else if (vis_palette_index) vis_palette_latched <= 1'b1;
+end
 
 // RESET / Reset-and-close-OSD
 reg [7:0] hard_reset_cnt = 8'd0;
@@ -345,7 +362,7 @@ wire      hard_reset_hold = hard_reset_cnt != 0;
 reg       rom_loaded = 0;
 
 always @(posedge CLK_50M) begin
-	if (ioctl_download) begin
+	if (ioctl_download && !vis_palette_download) begin
 		download_reset_cnt <= 8'd255;
 		download_soft_latched <= user_download_now;
 	end
@@ -431,7 +448,7 @@ rcastudioii rcastudio
 	.reset(reset),
 	.video_reset(video_reset),
 	
-	.ioctl_download(ioctl_download),
+	.ioctl_download(machine_download),
 	.ioctl_index(ioctl_index),
 	.ioctl_wr(ioctl_wr),
 	.ioctl_addr(ioctl_addr),
@@ -471,9 +488,9 @@ rcastudioii rcastudio
 // On Auto, the core's CRC/built-in-game detection owns the Joystick row and the
 // menu is made to agree with it: hps_io's status_set hands the HPS a whole new
 // status word, so writing the detected profile into bits [5:2] is what makes the
-// OSD read "Gunfighter" after Gunfighter is loaded. On Manual nothing is
-// written, so the row holds the last detected profile and the user edits from
-// there rather than from a stale selection.
+// OSD read the combined "Gunfighter/Tennis" profile after either is loaded. On
+// Manual nothing is written, so the row holds the last detected profile and the
+// user edits from there rather than from a stale selection.
 
 wire [3:0]   auto_profile;
 reg  [127:0] status_in;
@@ -515,7 +532,8 @@ end
 // D2 disables the manual Joystick row while Mapping is Auto. D3 disables the
 // CHIP-8 picker on Visicom. D4 disables NE555 tuning on the Studio III machines.
 // D5 enables the NTSC tone-pitch selector only on the Studio III NTSC. d6
-// enables 216p crop controls only for un-doubled 1080p.
+// enables 216p crop controls only for un-doubled 1080p. D7 enables the Visicom
+// palette picker only while Visicom is the active machine.
 // Use machine_active so a staged selection does not take effect before Apply
 // and reset.
 assign status_menumask = ((!status[6]) ? 16'h0004 : 16'h0000) |
@@ -523,7 +541,8 @@ assign status_menumask = ((!status[6]) ? 16'h0004 : 16'h0000) |
 	                     (((machine_active == 2'd1) ||
 	                       (machine_active == 2'd2)) ? 16'h0010 : 16'h0000) |
 	                     ((machine_active != 2'd2) ? 16'h0020 : 16'h0000) |
-	                     (en216p ? 16'h0040 : 16'h0000);
+	                     (en216p ? 16'h0040 : 16'h0000) |
+	                     ((machine_active != 2'd3) ? 16'h0080 : 16'h0000);
 
 // The scaler can't handle the very low res native raster. So the video
 // chain runs on the PLL's 42.24 MHz output and samples the core's pixel 
@@ -543,20 +562,46 @@ end
 // both background and data, see datasheet. Half scale here.
 wire [7:0] vid_lvl = video_bg ? 8'h80 : 8'hFF;
 
-// Visicom colours are fixed values so they cannot be expressed
-// on the {R,G,B} bus above.
-//
-// The current default is MAME's four-entry table. Alternative emulator values,
-// source observations, and future selectable/custom palette requirements are
-// tracked in docs/visicom-palettes.md.
+// Visicom's two colour planes produce a 2-bit hardware colour index. The
+// presentation-layer RGB mapping is replaceable without changing that hardware
+// emulation. These defaults use the Emma 02 reference palette.
+reg [23:0] vis_color0 = 24'h004000;
+reg [23:0] vis_color1 = 24'h70D0FF;
+reg [23:0] vis_color2 = 24'hD0FF70;
+reg [23:0] vis_color3 = 24'hFF7070;
+
+always @(posedge clk_sys) begin
+	if (vis_palette_download && ioctl_wr) begin
+		case (ioctl_addr)
+			25'd0:  vis_color0[23:16] <= ioctl_data;
+			25'd1:  vis_color0[15:8]  <= ioctl_data;
+			25'd2:  vis_color0[7:0]   <= ioctl_data;
+
+			25'd3:  vis_color1[23:16] <= ioctl_data;
+			25'd4:  vis_color1[15:8]  <= ioctl_data;
+			25'd5:  vis_color1[7:0]   <= ioctl_data;
+
+			25'd6:  vis_color2[23:16] <= ioctl_data;
+			25'd7:  vis_color2[15:8]  <= ioctl_data;
+			25'd8:  vis_color2[7:0]   <= ioctl_data;
+
+			25'd9:  vis_color3[23:16] <= ioctl_data;
+			25'd10: vis_color3[15:8]  <= ioctl_data;
+			25'd11: vis_color3[7:0]   <= ioctl_data;
+
+			default: ;
+		endcase
+	end
+end
+
 wire machine_visicom = (machine_active == 2'd3);
 reg [23:0] vis_rgb;
 always @(*) begin
 	case (vis_index)
-		2'd0:    vis_rgb = 24'h004000;
-		2'd1:    vis_rgb = 24'hAFDFE4;
-		2'd2:    vis_rgb = 24'hB9C42F;
-		default: vis_rgb = 24'hEF454A;
+		2'd0:    vis_rgb = vis_color0;
+		2'd1:    vis_rgb = vis_color1;
+		2'd2:    vis_rgb = vis_color2;
+		default: vis_rgb = vis_color3;
 	endcase
 end
 

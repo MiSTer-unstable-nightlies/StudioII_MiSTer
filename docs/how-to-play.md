@@ -65,8 +65,8 @@ This table records the minimum input shape needed for a useful controller profil
 | Game or program | Machine | Start / selection | Input shape |
 |---|---|---|---|
 | Classic CHIP-8 programs | Studio II / III | Load `.ch8` directly | D-pad `5/7/8/9`; Start `1`; Fire `F`; Extra `0` |
-| Resident Doodle / Patterns | Studio II | `A1` / `A2` | 8-way on B plus B5/B0 |
-| Resident Bowling | Studio II | `A3` | Cross plus center, alternating A/B |
+| Resident Doodle / Patterns | Studio II / III | `A1` / `A2` | 8-way on B plus B5/B0; Studio III colour/tone on A |
+| Resident Bowling | Studio II / III / Visicom | Studio `A3`; Visicom `A2` | 2/5/8, alternating A/B |
 | Resident Freeway | Studio II | `A4`, then B0/A0 | B4/B6 steer; A2 accelerates; A8 brakes |
 | Resident Addition | Studio II | `A5` | Full numeric keypad |
 | Baseball | Studio II / Visicom | `A0` | A/B cross plus center; roles swap |
@@ -88,13 +88,15 @@ This table records the minimum input shape needed for a useful controller profil
 | Hockey | Studio II | `A1`–`A4`, then `A8/A9` | 2/8/0 on both pads |
 | Invaders | Studio II | `A0` restarts | A4/A6 movement, B0 fire |
 | Invasion, The | Studio II | `A1`–`A6` difficulty | A4/A6 movement, A5 fire |
-| Flappy Pixel | Studio II | not yet documented | A5 flap; existing 8-way profile fits |
+| Flappy Pixel | Studio II | `A1` | A5 flap; existing 8-way profile fits |
 | Kaboom | Studio II | `A0` | A4/A6 movement |
 | Pacman | Studio II | `A0` | A2/A4/A6 and B8 |
-| Race | Studio II / Visicom | not yet documented | 8-way A; A2 acceleration can be held while steering |
+| Race | Studio II | not yet documented | 8-way A; A2 acceleration can be held while steering |
 | Scramble | Studio II | `A6` or `B6` | 2/4/8/0; either pad |
 | Space Explorer | Studio II | program starts directly | 8-way B, B5 lock, A0 fire |
-| Visicom resident games | Visicom | `A1/A2/A3/A4/A7` | Varies; mostly cross/full keypad |
+| Visicom Doodle / Patterns | Visicom | `A1` / `A3` | 8-way B draws; B5/B0 cycle colour forward/backward; Start repeats/resumes Patterns; A0 stops repetition |
+| Visicom Freeway | Visicom | `A4`, then B0/B5 | B2/B8 accelerate/brake; B4/B6 steer |
+| Visicom Addition | Visicom | `A7` | Full numeric keypad A or B |
 | Visicom cartridges | Visicom | normally `A0` | Per-title; several remain unknown |
 
 ## RCA Studio II resident games
@@ -167,7 +169,7 @@ The one-player Guess the Number game allows 20 guesses. In Reverse, reorder 1–
 - Each player chooses racquet size on their pad: `4` small, `5` medium, `6` large.
 - Player A selects ball speed and begins: `A7` slow, `A8` normal, `A9` fast.
 - During play, `2` moves a racquet up and `8` down on its player's keypad. Between serves, `0` pauses/resumes.
-- The `Tennis` controller profile starts `A1` Squash in Auto/1P and drives
+- The `Gunfighter/Tennis` controller profile starts `A1` Squash in Auto/1P and drives
   keypad B from controller 1. With Players set to 2, Start selects `A2` Tennis
   and controllers 1/2 drive keypads A/B. Extra supplies each player's `0`
   pause key.
@@ -202,6 +204,10 @@ The one-player Guess the Number game allows 20 guesses. In Reverse, reorder 1–
 - `A1`: Speedway. `A2`: Tag.
 - Both players move with `2/4/6/8` on their own keypads.
 - Speedway is a nine-lap race; wall and car impacts slow the player.
+- Speedway does not allow a car to reverse. For example, pressing player A's
+  `A4` on a rightward straightaway has no effect; completing a normal lap
+  confirms that the left key is working, so this is game behavior rather than
+  a failed input.
 - Tag awards 10 points per tag. The role changes after a tag or about ten seconds. Highest score after two minutes wins, or first to 300.
 
 ### Star Wars
@@ -271,7 +277,7 @@ Studio II-compatible cartridges above also run on several MPT-02-family machines
 - `A1` Doodle, `A2` Patterns, `A3` Bowling, `A4` Blackjack one-player and `A5` Blackjack two-player.
 - Doodle and Patterns use the resident-game movement and drawing controls above. Their keypad A colour/tone choices are `3` red/do, `4` blue/re, `5` violet/mi, `6` green/fa, `7` yellow/sol, `8` light blue/la, `9` white/si and `0` black/do.
 - Patterns stores up to 128 entries; a colour/tone change uses three entries. `B0` begins or resumes repetition and `B5` freezes it.
-- Bowling follows the resident controls and lasts ten frames; a strike scores 20, a spare 15 and a perfect game 200.
+- Bowling follows the resident controls and lasts ten frames; a strike scores 20, a spare 15 and a perfect game 200. The automatic profile mirrors controller 1 onto A and B; select Players 2 to split them between two controllers.
 - In Blackjack, players can bet $01–$99; active-pad actions are `1` hit, `2` double and `0` stand.
 
 The merged Grand Pack and its two split dumps represent the same package and should share mapping research.
@@ -417,11 +423,16 @@ Select the Visicom machine and use its firmware. Visicom cartridges normally ent
 
 | Game | Select | Controls |
 |---|---|---|
-| Doodle | `A1` | Eight-direction movement on A draws immediately. `A0` cycles red → dark green/erase → blue → green; `A5` cycles backward. |
-| Bowling | `A2` | Players alternate; `2` hook up, `5` straight, `8` hook down on the active pad. |
-| Patterns | `A3` | Draw as in Doodle, then press `A3` again to repeat the pattern. |
-| Freeway | `A4` | `A5` starts; `A2/A8` accelerate/brake and `A4/A6` steer. Two-minute score. |
-| Addition | `A7` | Add the displayed digits and enter the total; player 1 uses A and player 2 B. Twenty problems. |
+| Doodle | `A1` | Moving in eight directions on B draws. `B5` cycles red → yellow → blue → blinking; `B0` cycles in reverse. Move while blinking to reposition without drawing or retrace to erase. |
+| Bowling | `A2` | A bowls first, then B; `2` hooks up, `5` rolls straight and `8` hooks down on the active pad. |
+| Patterns | `A3` | Press and release `A3`, then draw the seed with the eight directions on B; `B5/B0` cycle colour forward/backward as in Doodle. `A3` begins/resumes repetition and `A0` stops it; repetition starts automatically after 130 inputs. While stopped, `A1` enters Doodle so a drawing can be overlaid. |
+| Freeway | `A4` | All play controls are on B: `B0` starts License A/easy, `B5` starts License B/hard, and `B2/B8/B4/B6` accelerate/brake/steer left/steer right. The race lasts about two minutes. |
+| Addition | `A7` | Press and release `A7`. In one-player mode, enter the sum on either pad; in two-player mode, both pads race to answer. Twenty problems. |
+
+The Visicom Freeway stick's lower round button is License A/easy and its upper
+button is License B/hard. In the automatic profile, Start selects `B0` easy,
+Extra selects `B5` hard, and Fire supplies `B2` acceleration, matching the
+Studio II Freeway gamepad controls.
 
 ### Sports Fan (Baseball & Sumo Wrestling) (CAS-130)
 
@@ -469,9 +480,10 @@ When filling a gap, record at minimum: exact Fullset filename and CRC, machine, 
 ## Source notes
 
 - Original RCA cartridge manuals and standalone manual transcriptions supplied with the software.
+- The original RCA *Game Instruction Manual for Studio II and Studio III* and Toshiba Visicom COM-100 manual supplied with the project.
 - Paul Robson's author readmes for Asteroids, Berzerk, Combat, Hockey, Invaders, Kaboom, Pacman and Scramble.
 - Lee Romanow's author documentation for Climber, Fifteen Puzzle, Invasion, Outbreak, Rocket and TV Arcade 2012.
-- Direct project control testing for Flappy Pixel and Race.
+- Direct project control testing for Flappy Pixel, Race and Speedway.
 - Andrew Modla's `rca-studio2` data notes for Pinball, Space Explorer, the test cartridge and demonstration images.
 - Emma 02 how-to-play material for Studio II, MPT-02 and Visicom resident/cartridge software.
 - AtariAge user etxmato's documented controls for Visicom Inspiration.

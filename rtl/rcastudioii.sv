@@ -362,19 +362,20 @@ reg  [9:0] playerB = 10'h0;
 // top of whatever profile is active.
 
 // The profile is 4 bits internally; the OSD override (joy_override) is 4, so
-// the menu can force any of the 16 encoded profiles, including Gunfighter.
+// the menu can force any of the 16 encoded profiles.
 // Keep the numeric values aligned with the OSD list so a user selection selects
 // the correct profile.
 localparam [3:0] MAP_NONE       = 4'd0;   // no controller mapping; keep keypad/OSK input only
 localparam [3:0] MAP_CROSS      = 4'd1;   // 2/8/4/6 + 5 fire, both pads
 localparam [3:0] MAP_SPACEWAR   = 4'd2;   // fire A2, steer B4/B6
-localparam [3:0] MAP_FREEWAY    = 4'd3;   // steer B4/B6, Fire A2, Extra A0,
-                                          // Start B0, D-pad down brakes with A8
-localparam [3:0] MAP_BOWLING    = 4'd4;   // roll A5, hook A2/A8
+localparam [3:0] MAP_FREEWAY    = 4'd3;   // Studio II uses A for speed and B to steer;
+                                          // Visicom puts every control on B
+localparam [3:0] MAP_BOWLING    = 4'd4;   // roll 5, hook 2/8 on the active A/B pad
 localparam [3:0] MAP_BASEBALL   = 4'd5;   // bat A5; pitch B5 straight, B2/B8 curve
 localparam [3:0] MAP_HOMEBREW   = 4'd6;   // Paul Robson's 1P games: 8-way on pad A
                                           // (diagonals are keys 1/3/7/9), fire B0
-localparam [3:0] MAP_GUNFIGHTER = 4'd7;   // vertical cross: 2/8 + fire 5, one-player
+localparam [3:0] MAP_VIS_ART    = 4'd7;   // Visicom Doodle/Patterns: directions B,
+	                                          // Fire B5, Extra B0
 localparam [3:0] MAP_8WAY       = 4'd8;   // CROSS plus diagonals: 1/3/7/9, fire 5 + extra 0
 localparam [3:0] MAP_DOODLE     = 4'd9;   // Doodle/Patterns: B-side 8-way, fire 5, extra 0
 localparam [3:0] MAP_HB2P       = 4'd10;  // 2P homebrew (Hockey, Combat): cross plus
@@ -383,10 +384,10 @@ localparam [3:0] MAP_HB2P       = 4'd10;  // 2P homebrew (Hockey, Combat): cross
                                           // list as "2P Homebrew" for manual override.
 localparam [3:0] MAP_RACE       = 4'd11;  // A-side 8-way; Fire is an independent A2
                                           // so acceleration can be held while steering
-localparam [3:0] MAP_TENNIS     = 4'd12;  // Auto/1P: Squash on keypad B. 2P: Tennis
-                                          // split across A/B. Up/down map to 2/8;
-                                          // left/fire/right select racket size 4/5/6;
-                                          // Extra maps to each player's 0 pause key.
+localparam [3:0] MAP_TENNIS     = 4'd12;  // Gunfighter/Tennis. Auto/1P uses keypad B;
+                                          // 2P splits the matching A/B controls.
+                                          // Tennis/Squash uses left/fire/right for
+                                          // racket size and Extra for pause.
 localparam [3:0] MAP_CHIP8      = 4'd13;  // common CHIP-8 movement cluster: 5/7/8/9
                                           // on pad A; Start 1, Fire F, Extra 0.
 localparam [3:0] MAP_CLIMB      = 4'd14;  // Climber/Outbreak: A-side movement, Fire
@@ -477,7 +478,7 @@ always @(posedge clk_sys) begin
 
 			// TV Arcade Series - Gunfighter + Moonship Battle
 			16'h043E, 16'h3CDC: begin
-				map_profile <= MAP_GUNFIGHTER;
+				map_profile <= MAP_TENNIS;
 				start_key   <= 4'd1;
 			end
 
@@ -733,15 +734,14 @@ always @(posedge clk_sys) begin
 end
 
 // ---- built-in games -------------------------------------------------------
-// With no cartridge there is nothing to CRC, so the five BIOS games are told
-// apart by the key that starts them (service manual pp.7-8): A1 Doodle,
-// A2 Patterns, A3 Bowling, A4 Freeway, A5 Addition. Only the *first* such press
-// after reset counts -- those keys are reused during play (A5 rolls the ball in
-// Bowling, for instance). 
+// With no cartridge there is nothing to CRC, so resident games are told apart
+// by the firmware menu key that starts them. Only the first recognized press
+// after reset counts because those keys are reused during play.
 
 wire       no_cart = !chip8_active && (cart_crc == 16'hFFFF);
 reg        builtin_sel;
 reg  [3:0] builtin_profile;
+reg  [3:0] builtin_start_key;
 
 // Consider on-screen keypad (osk_a) as well as the physical keypad for
 // selecting built-in games. Treat the on-screen keypad's key at
@@ -751,16 +751,51 @@ wire        builtin_start_press = start_press | osk_a[active_start_key];
 
 always @(posedge clk_sys) begin
 	if (reset) begin
-		builtin_sel     <= 1'b0;
-		builtin_profile <= MAP_NONE;
+		builtin_sel       <= 1'b0;
+		builtin_profile   <= MAP_NONE;
+		builtin_start_key <= 4'd1;
 	end
 	else if (no_cart && !builtin_sel) begin
-		if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle: B-side 8-way
-		else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns: B-side 8-way
-		// A3 = BOWLING; A4 = FREEWAY. If the service manual claims otherwise, it's wrong.
-		else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
-		else if (builtin_padA[4]) begin builtin_profile <= MAP_FREEWAY; builtin_sel <= 1'b1; end  // Freeway
-		else if (builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Addition: digits
+		case (machine)
+		MACHINE_STUDIO2: begin
+			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
+			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
+			// A3 = BOWLING; A4 = FREEWAY. If the service manual claims otherwise, it's wrong.
+			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
+			else if (builtin_padA[4]) begin builtin_profile <= MAP_FREEWAY; builtin_sel <= 1'b1; end  // Freeway
+			else if (builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Addition
+		end
+		MACHINE_S3_PAL, MACHINE_S3_NTSC: begin
+			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
+			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
+			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
+			else if (builtin_padA[4] || builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Blackjack
+		end
+		MACHINE_VISICOM: begin
+			if (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin
+				builtin_profile   <= MAP_VIS_ART; // Doodle
+				builtin_start_key <= 4'd1;
+				builtin_sel       <= 1'b1;
+			end
+			else if (builtin_padA[2]) begin
+				builtin_profile <= MAP_BOWLING; // Bowling
+				builtin_sel     <= 1'b1;
+			end
+			else if (builtin_padA[3]) begin
+				builtin_profile   <= MAP_VIS_ART; // Patterns
+				builtin_start_key <= 4'd3;
+				builtin_sel       <= 1'b1;
+			end
+			else if (builtin_padA[4]) begin
+				builtin_profile <= MAP_FREEWAY; // Freeway
+				builtin_sel     <= 1'b1;
+			end
+			else if (builtin_padA[7]) begin
+				builtin_profile <= MAP_NONE; // Addition
+				builtin_sel     <= 1'b1;
+			end
+		end
+		endcase
 	end
 end
 
@@ -796,13 +831,16 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 		MAP_SPACEWAR:                        // fire
 			if (j[4]) k[2] = 1'b1;
 		MAP_FREEWAY: begin                   // throttle/brake
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[4]) k[2] = 1'b1;   if (j[5]) k[0] = 1'b1;
+			if (!machine_visicom) begin
+				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+				if (j[4]) k[2] = 1'b1;   if (j[5]) k[0] = 1'b1;
+			end
 		end
 		MAP_BOWLING: begin                   // roll straight, or hook up/down
 			if (j[4]) k[5] = 1'b1;
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
 		end
+		MAP_VIS_ART: ;                         // drawing and colour controls are on B
 		MAP_BASEBALL:                        // bat
 			if (j[4]) k[5] = 1'b1;
 		MAP_HOMEBREW: begin
@@ -837,12 +875,6 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 			end
 			endcase
 			if (j[4]) k[2] = 1'b1;           // accelerate independently
-		end
-		MAP_GUNFIGHTER: begin                // 2P behaves like CROSS; Auto/1P uses the
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;   // right-hand B-only mapping
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
 		end
 		MAP_8WAY: begin                      // CROSS + 8-way diagonals: 1/3/7/9 on corners
 			case (j[3:0])
@@ -908,9 +940,19 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 		MAP_SPACEWAR: begin                  // steering
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
 		end
-		MAP_FREEWAY: begin                   // steering
+		MAP_FREEWAY: begin
 			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[6]) k[0] = 1'b1;           // normal mode
+			if (machine_visicom) begin
+				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+				if (j[4]) k[2] = 1'b1;           // accelerate independently
+				if (j[5]) k[5] = 1'b1;           // License B
+				if (j[6]) k[0] = 1'b1;           // License A
+			end
+			else if (j[6]) k[0] = 1'b1;       // Studio II normal
+		end
+		MAP_BOWLING: begin                   // active player rolls from either keypad
+			if (j[4]) k[5] = 1'b1;
+			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
 		end
 		MAP_BASEBALL: begin                  // pitch
 			if (j[4]) k[5] = 1'b1;
@@ -930,11 +972,19 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[0] = 1'b1;
 		end
 		MAP_RACE: ;                         // all controls are on keypad A
-		MAP_GUNFIGHTER: begin               // 2P behaves like CROSS; Auto/1P uses the
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;   // right-hand B-only mapping
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
+		MAP_VIS_ART: begin                   // movement draws; 5/0 select colour/state
+			case (j[3:0])
+			4'b1010: k[1] = 1'b1;
+			4'b1001: k[3] = 1'b1;
+			4'b0110: k[7] = 1'b1;
+			4'b0101: k[9] = 1'b1;
+			default: begin
+				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
+				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
+			end
+			endcase
+			if (j[4]) k[5] = 1'b1;           // next colour
+			if (j[5]) k[0] = 1'b1;           // previous colour / flashing
 		end
 		MAP_8WAY: begin                      // CROSS + 8-way diagonals: 1/3/7/9 on corners
 			case (j[3:0])
@@ -989,15 +1039,15 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			endcase
 			if (j[5]) k[5] = 1'b1;           // lock target
 		end
-		default: ;                           // Bowling: keypad B unused
+		default: ;
 		endcase
 		map_padB = k;
 	end
 endfunction
 
 wire profile_1p = (profile == MAP_SPACEWAR) || (profile == MAP_FREEWAY) ||
-                  (profile == MAP_BOWLING)  || (profile == MAP_NONE) ||
-                  (profile == MAP_HOMEBREW) || (profile == MAP_GUNFIGHTER) ||
+	              (profile == MAP_BOWLING)  || (profile == MAP_NONE) ||
+	              (profile == MAP_HOMEBREW) || (profile == MAP_VIS_ART) ||
                   (profile == MAP_8WAY)     || (profile == MAP_DOODLE) ||
                   (profile == MAP_RACE)     || (profile == MAP_TENNIS) ||
                   (profile == MAP_CHIP8)    || (profile == MAP_CLIMB) ||
@@ -1017,29 +1067,26 @@ always @* begin
 	end
 end
 wire       start_press = joystick_0[6] | joystick_1[6];
-wire [3:0] active_start_key = (profile == MAP_TENNIS) ? (one_player ? 4'd1 : 4'd2) :
-	                         (((profile == MAP_GUNFIGHTER) || (profile == MAP_DOODLE) ||
-	                           (profile == MAP_CHIP8)) ? 4'd1 : start_key);
+wire [3:0] active_start_key = (profile == MAP_TENNIS) ? (one_player ? 4'd1 : 4'd2)
+	                         : ((profile == MAP_VIS_ART) && no_cart && builtin_sel) ? builtin_start_key
+	                         : (((profile == MAP_DOODLE) || (profile == MAP_CHIP8)) ? 4'd1
+	                                                                                 : start_key);
 wire       builtin_keypad_only = no_cart && builtin_sel && (builtin_profile == MAP_NONE);
 wire       start_enabled = (active_start_key < 4'd10) && (profile != MAP_FREEWAY) &&
 	                       (profile != MAP_EXPLORER) && !builtin_keypad_only;
 wire [9:0] start_keys       = (start_enabled && start_press) ? (10'd1 << active_start_key) : 10'd0;
 
-// Gunfighter and Tennis are B-only in Auto/1P. In 2P, Gunfighter splits like
-// CROSS and Tennis uses its matching A/B halves. 8WAY follows the normal CROSS
-// path (A-side in 1P).
+// Gunfighter/Tennis is B-only in Auto/1P and splits across A/B in 2P. 8WAY
+// follows the normal CROSS path (A-side in 1P).
 wire [9:0] joyA = ((profile == MAP_NONE) ? 10'd0
-                : (((profile == MAP_GUNFIGHTER) || (profile == MAP_TENNIS)) && one_player) ? 10'd0
-                : ((profile == MAP_DOODLE) ? 10'd0
-                                          : ((profile == MAP_GUNFIGHTER) ? map_padA(MAP_CROSS, joystick_0)
-                                                                        : map_padA(profile, joystick_0))));
+	            : ((profile == MAP_TENNIS) && one_player) ? 10'd0
+	            : ((profile == MAP_DOODLE) ? 10'd0
+	                                      : map_padA(profile, joystick_0)));
 
 wire [9:0] joyB = ((profile == MAP_NONE) ? 10'd0
-                : ((profile == MAP_GUNFIGHTER) && one_player) ? map_padB(MAP_CROSS, joystick_0)
-                : ((profile == MAP_DOODLE) ? map_padB(MAP_DOODLE, joystick_0)
-                                          : ((profile == MAP_GUNFIGHTER) ? map_padB(MAP_CROSS, joystick_1)
-                                                                        : (one_player ? map_padB(profile, joystick_0)
-                                                                                       : map_padB(profile, joystick_1)))));
+	            : ((profile == MAP_DOODLE) ? map_padB(MAP_DOODLE, joystick_0)
+	                                      : (one_player ? map_padB(profile, joystick_0)
+	                                                    : map_padB(profile, joystick_1))));
 wire [9:0] joyA_active = joyA | directA | start_keys;
 wire [9:0] joyB_active = joyB | directB;
 

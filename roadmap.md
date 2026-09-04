@@ -42,6 +42,16 @@ technical documents; completed milestones belong in release notes and Git.
 - Reuse useful driver code from the legacy scripts, but do not preserve their
   aggregate scores or unverified assumptions.
 
+## Controller and keypad refinements
+
+- Prevent the left analog stick from also generating ordinary profile movement
+  while Numstick is using it to select `0`. Prefer automatic suppression while
+  Numstick is active, unless an explicit left-stick option proves necessary.
+- Verify the physical MPT-02-family joystick directions from primary material
+  or hardware before describing them as equivalent to the neutral eight-way
+  fallback. The matching Visicom layout is documented; similarity alone is not
+  evidence for the MPT-02 family.
+
 ## Keyboard and keypad options
 
 - Add optional physical numpad support, assigning the MiSTer keyboard's numeric
@@ -97,8 +107,6 @@ technical documents; completed milestones belong in release notes and Git.
   of the programmable tone generator, serving as both a musical showcase and a
   repeatable audio test program.
 - Capture matching reviewed scenarios over HDMI and direct video.
-- Add an HDMI-only border crop and a cropped 5x mode for 1080p without changing
-  the direct-video or machine geometry models.
 
 ## Deferred
 
