@@ -34,6 +34,7 @@
 #define RS(sig)   (top->rootp->top__DOT__rcastudio__DOT__##sig)
 #define CPU(sig)  (top->rootp->top__DOT__rcastudio__DOT__cdp1802__DOT__##sig)
 #define PIX(sig)  (top->rootp->top__DOT__rcastudio__DOT__pixie_video__DOT__cdp1861__DOT__##sig)
+#define BEEP(sig) (top->rootp->top__DOT__rcastudio__DOT__##sig)
 #define ROM0      (top->rootp->top__DOT__rcastudio__DOT__rom0__DOT__mem)
 #define ROM1      (top->rootp->top__DOT__rcastudio__DOT__rom1__DOT__mem)
 #define ROM2      (top->rootp->top__DOT__rcastudio__DOT__rom2__DOT__mem)
@@ -1001,9 +1002,9 @@ int main(int argc, char** argv) {
                            "live=%u control=%u drive=%u amp=%u on_ticks=%u\n",
                            q_now ? 1 : 0, (long)fg.frame, a_edges,
                            (unsigned long long)main_time,
-                           (unsigned)RS(snd_half), (unsigned)RS(snd_control_half),
-                           (unsigned)RS(snd_drive_half), (unsigned)RS(snd_amp),
-                           (unsigned)RS(snd_on_ticks));
+                           (unsigned)BEEP(snd_half), (unsigned)BEEP(snd_control_half),
+                           (unsigned)BEEP(snd_drive_half), (unsigned)BEEP(snd_amp),
+                           (unsigned)BEEP(snd_on_ticks));
             }
         }
 
@@ -1142,22 +1143,22 @@ int main(int argc, char** argv) {
             {0, 2, 9, 3, "Studio II Patterns"},
             {0, 3, 4, 4, "Studio II Bowling"},
             {0, 4, 3, 3, "Studio II Freeway"},
-            {0, 5, 0, 3, "Studio II Addition"},
+            {0, 5, 8, 3, "Studio II Addition"},
             {1, 1, 9, 3, "Studio III PAL Doodle"},
             {1, 2, 9, 3, "Studio III PAL Patterns"},
             {1, 3, 4, 4, "Studio III PAL Bowling"},
-            {1, 4, 0, 3, "Studio III PAL Blackjack 1P"},
-            {1, 5, 0, 3, "Studio III PAL Blackjack 2P"},
+            {1, 4, 8, 3, "Studio III PAL Blackjack 1P"},
+            {1, 5, 8, 3, "Studio III PAL Blackjack 2P"},
             {2, 1, 9, 3, "Studio III NTSC Doodle"},
             {2, 2, 9, 3, "Studio III NTSC Patterns"},
             {2, 3, 4, 4, "Studio III NTSC Bowling"},
-            {2, 4, 0, 3, "Studio III NTSC Blackjack 1P"},
-            {2, 5, 0, 3, "Studio III NTSC Blackjack 2P"},
+            {2, 4, 8, 3, "Studio III NTSC Blackjack 1P"},
+            {2, 5, 8, 3, "Studio III NTSC Blackjack 2P"},
             {3, 1, 7, 2, "Visicom Doodle"},
             {3, 2, 4, 1, "Visicom Bowling"},
             {3, 3, 7, 2, "Visicom Patterns"},
             {3, 4, 3, 2, "Visicom Freeway"},
-            {3, 7, 0, 2, "Visicom Addition"},
+            {3, 7, 8, 2, "Visicom Addition"},
         };
         auto clock_core = [&]() {
             top->clk_48 = 0;
@@ -1177,6 +1178,7 @@ int main(int argc, char** argv) {
             top->machine = c.machine;
             RS(builtin_sel) = 0;
             RS(builtin_profile) = 0;
+            RS(builtin_start_key) = 1;
             RS(playerA) = 1u << c.key;
             clock_core();
             RS(playerA) = 0;
@@ -1203,6 +1205,7 @@ int main(int argc, char** argv) {
         top->machine = 3;
         RS(builtin_sel) = 0;
         RS(builtin_profile) = 0;
+        RS(builtin_start_key) = 1;
         RS(playerA) = 1u << 5;
         clock_core();
         RS(playerA) = 0;
@@ -1215,8 +1218,8 @@ int main(int argc, char** argv) {
         clock_core();
         RS(playerA) = 0;
         top->eval();
-        if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != 0u) {
-            printf("FAIL Visicom A7 after non-menu key did not select keypad-only profile\n");
+        if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != 8u) {
+            printf("FAIL Visicom A7 after non-menu key did not select neutral 8-way profile\n");
             failures++;
         }
 
@@ -1224,6 +1227,7 @@ int main(int argc, char** argv) {
         // resident Doodle profile, as it already does for the Studio menus.
         RS(builtin_sel) = 0;
         RS(builtin_profile) = 0;
+        RS(builtin_start_key) = 1;
         top->joystick_0 = 1u << 6;
         clock_core();
         top->joystick_0 = 0;
@@ -1345,7 +1349,7 @@ int main(int argc, char** argv) {
         expect_profile(8, 1u << 4, 1u << 5, 1u << 5, "Flappy Fire");
         expect_profile_players(12, 2, 1u << 6, 0, 1u << 2, 0,
                                "Gunfighter/Tennis two-player Start");
-        expect_profile(11, (1u << 4) | (1u << 1), (1u << 2) | (1u << 4), 0,
+        expect_profile(11, (1u << 4) | (1u << 1), 0, (1u << 2) | (1u << 4),
                        "Race accelerate+left");
         expect_profile_players(12, 1, (1u << 3) | (1u << 4) | (1u << 5), 0,
                                0, (1u << 2) | (1u << 5) | (1u << 0),

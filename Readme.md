@@ -14,13 +14,13 @@ Supported hardware includes:
 * Toshiba Visicom COM-100
 * Trevi M-1200
 
-## Install and play
+## Install
 
 Copy the release `.rbf` to e.g. `/media/fat/_Console/` on MiSTer.
 
 Put the four native firmware files below in `/media/fat/games/Studio-II/`. For CHIP-8 support, put `chip8.bin` in the same directory as your CHIP-8 games, or load it manually. Firmware images are available in the Emma 02 GitHub repository, e.g. [Studio II](https://github.com/etxmato/emma_02/blob/master/data/StudioII/studio2.rom).
 
-Use **Load Cartridge** for `.st2` or `.bin` games and **Load CHIP-8** for `.ch8` programs. **Load Firmware** temporarily replaces the active machine's native firmware; **Load CHIP-8 Interpreter** loads `chip8.bin` separately, where it is only used when a `.ch8` program is loaded.
+**Load Firmware** temporarily replaces the active machine's native firmware; **Load CHIP-8 Interpreter** loads `chip8.bin` separately, where it is only used when a `.ch8` program is loaded.
 
 `Machine` selects `Studio II`, `Studio III (PAL)`, `Studio III (NTSC)`, or `Visicom`. Changes take effect after **Apply and reset**.
 
@@ -34,13 +34,13 @@ Use **Load Cartridge** for `.st2` or `.bin` games and **Load CHIP-8** for `.ch8`
 
 Other firmware images may work; those listed above were used during development and testing.
 
-[Marcel van Tongeren's Studio-family interpreter](https://www.emma02.hobby-site.com/studio_chip8.html) is required for CHIP-8 support and is available from the [Emma 02 GitHub repository](https://github.com/etxmato/emma_02/blob/master/data/StudioII/chip8.bin).
-
-The native firmware includes resident games. With automatic mapping, selecting a recognized resident game also selects its controller profile. Selection keys and play instructions are listed in [docs/how-to-play.md](docs/how-to-play.md).
+The native firmware includes resident games. Using a resident game's start key causes the core to attempt to load an appropriate controller profile. Games often start on a black screen. Selection keys and play instructions are listed in [docs/how-to-play.md](docs/how-to-play.md).
 
 ## Keypad and CLEAR
 
-The keyboard is mapped like this:
+Keypad A and B are called "Keyboards" in RCA documentation. Keypad is used instead to avoid confusion. 
+
+The keypads are mapped to the MiSTer keyboard like this:
 
 ```text
    Keypad A (left)        Keypad B (right)
@@ -57,6 +57,8 @@ The keyboard is mapped like this:
 
 ## CHIP-8
 
+Marcel van Tongeren's [Studio II CHIP-8 interpreter](https://github.com/etxmato/emma_02/blob/master/data/StudioII/chip8.bin) is required for CHIP-8 support.
+
 CHIP-8 uses the COSMAC VIP's 16-key hexadecimal keypad:
 
 ```text
@@ -72,33 +74,27 @@ The **CHIP-8** gamepad profile maps D-pad Up/Left/Down/Right to `5/7/8/9`, Start
 
 The Studio-family interpreter has some limitations on which CHIP-8 games are compatible. See Marcel van Tongeren's [informational page](https://emma02.hobby-site.com/studio_chip8.html) for more details.
 
+    When unloading a running CHIP-8 program without resetting, the interpreter may produce garbage video or sound because execution continues after the program is unmapped. Use Unload Cartridge and Reset for a clean exit.
+
 CHIP-8 is not supported on Visicom because there is no available interpreter for the platform.
 
 ## Options
 
-**Sound: Off** mutes the core without stopping the machine's tone generator.
+**NE555 pitch** adjusts the Studio II and Visicom beeper tuning.
 
-**NE555 pitch** adjusts the Studio II and Visicom beeper. Original follows the measured December 1976 RCA demonstration unit at approximately 625 Hz initially and 502.5 Hz sustained. The other settings proportionally scale the same pitch curve higher or lower. This option does not apply to Studio III.
+**CDP1863 pitch** only applies to Studio III NTSC. The PAL option applies the CDP1864 divide-by-four stage for PAL-equivalent pitch on NTSC.
 
-**CDP1863 pitch** applies only to Studio III NTSC. Original uses the native CDP1863 pitch; PAL applies the CDP1864 divide-by-four stage for PAL-equivalent pitch.
+**Load Palette** allows setting a 2-color (Studio II, CHIP-8) or 4-color (Visicom) color palette. MiSTer Game Boy `.gbp` palettes are supported. Example palettes are in [`palettes`](palettes/).
 
-**Visicom Palette** uses the Emma 02 palette by default. A custom 16-byte `.vcp` file can be loaded with **Load Palette**; the first four RGB888 entries define the four Visicom colours. To generate new palettes, see [`tools/vispalette`](tools/vispalette).
+**Clear** initializes (resets) the game or firmware you have running. It's a physical button on the hardware.
 
-**Vertical Crop: 216p (5x)** crops 1080p HDMI output to 216 lines for exact 5x integer scaling. **Crop Offset** moves the crop window up or down. The scandoubler must be off and output resolution set to 1080p.
+**Unload Cartridge** ejects without resetting; video remains active and the previous firmware or resident-game mapping becomes visible again.
 
-**Borders: Off** presents only the active 64x128 NTSC-family or 64x192 Studio III PAL bitmap while retaining original video timing.
+**Unload Cartridge and Reset** ejects the active cartridge and resets the machine. 
 
 ## Controller profiles
 
 **Mapping: Auto** selects a controller profile from the cartridge CRC, falling back to 8-way for unknown games. Resident games can also select their profiles automatically. **Manual** allows direct profile selection.
-
-Gamepad 0 controls the primary one-player mode, using keypad A, keypad B, or both as required by the game. Keyboard, direct `A0`–`B9` bindings, CLEAR, and Numstick remain available with either mapping mode.
-
-A few games have special handling:
-
-* Bowling mirrors controller 1 to both keypads for alternating play; **Players: 2** separates them.
-* Visicom Freeway uses Start for License A/easy, Extra for License B/hard, Fire or Up to accelerate, and Down to brake.
-* Visicom Art (Doodle/Patterns) draws while the D-pad moves. Fire selects the next colour, Extra selects the previous colour or flashing state, and Start selects or repeats the active mode. Enable Numstick A or bind `A0` directly to stop Patterns repetition.
 
 **Mapping: Manual** overrides automatic mappings and enables the Profile field.
 
@@ -108,7 +104,7 @@ A few games have special handling:
 
 ## Studio IV
 
-Studio IV is not currently supported due to significant hardware differences.
+Studio IV is not supported.
 
 ## Project information
 

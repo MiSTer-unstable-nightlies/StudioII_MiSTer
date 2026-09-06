@@ -62,6 +62,7 @@ CC_OPT = -O
 V_SRC = \
 	sim.v \
 	$(RTL)/rcastudioii.sv \
+	$(RTL)/audio/studio2_beeper.sv \
 	$(RTL)/cdp1802.v \
 	$(RTL)/dpram.sv \
 	$(RTL)/pixie/cdp1861.v \

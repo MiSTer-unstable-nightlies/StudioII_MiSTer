@@ -63,7 +63,7 @@ The surviving source was preserved from
 
 ## Implementation
 
-`rtl/rcastudioii.sv` maintains one oscillator state through drive, release, and
+`rtl/audio/studio2_beeper.sv` maintains one oscillator state through drive, release, and
 retrigger. Audible release and recovered next-start state are represented
 separately: the live pitch follows the release tail, while a hidden divider
 tracks recovery. On Q rising, live pitch glides to the recovered state without a

@@ -7,9 +7,9 @@ import re
 
 
 PIXEL_CLOCK = 1_760_229
-RTL = Path(__file__).resolve().parents[1] / "rtl" / "rcastudioii.sv"
+RTL = Path(__file__).resolve().parents[1] / "rtl" / "audio" / "studio2_beeper.sv"
 TEXT = RTL.read_text(encoding="utf-8")
-TOP_LEVEL = RTL.parents[1] / "Studio-II.sv"
+TOP_LEVEL = RTL.parents[2] / "Studio-II.sv"
 TOP_TEXT = TOP_LEVEL.read_text(encoding="utf-8")
 
 

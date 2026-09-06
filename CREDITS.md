@@ -19,5 +19,5 @@ Accuracy and compatibility work also relies heavily on:
 ## Special thanks
 
 - **Kevin Bunch** — Reference Studio II capture and critical hardware insight.
-- **FLiP** - Reference capture, analysis, and deep technical insight.
+- **FLiP** — Reference capture, analysis, and deep technical insight.
 - **Hagley Museum and Library** — Historical materials and preservation.

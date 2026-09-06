@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Print the CRC16-CCITT of a cartridge, matching the one rtl/rcastudioii.sv
 # computes during ioctl_download. Use it to add a cartridge to the joystick
-# mapping table (the case statement on cart_crc).
+# cartridge profile database in rtl/studio2_cart_profiles.sv.
 #
 #   tools/cart-crc.sh software/StudioII-Cartridges/*.st2
 set -euo pipefail

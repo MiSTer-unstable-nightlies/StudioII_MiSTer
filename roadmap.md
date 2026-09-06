@@ -12,6 +12,7 @@ technical documents; completed milestones belong in release notes and Git.
 - Build one repeatable video pipeline for colour clusters, geometry, sync, and
   temporal stability, with capture-path assumptions kept separate from source
   signal inferences.
+
 ## Fidelity work
 
 ### Visicom video
@@ -80,21 +81,11 @@ technical documents; completed milestones belong in release notes and Git.
 
 ## Selectable palettes
 
-- Preserve hardware-accurate colours as the default while allowing the user to
-  override the final indexed colours without changing machine behavior.
-- Add two-entry, 1-bit palette support for Studio II foreground and background.
-- Add four-entry, 2-bit palette support for Visicom. Its four indexed colours
-  are a natural fit for Game Boy-style palette sets.
-- Provide named Visicom presets, initially including the current/MAME, Emma 02,
-  and preferred Nicole Express source-look tables, plus a user-loadable
-  four-entry 24-bit RGB palette. Applying a custom palette must not require HDL
-  edits, synthesis, or a machine reset.
-- Label any optional flyer-, manual-, or capture-derived preset as a source
-  *look*, not as the accepted hardware palette.
+- Add two-entry, 1-bit palette support for Studio II foreground and background,
+  keeping the hardware-accurate colours as the default.
 - Consider an optional expanded eight-entry palette for Studio III after the
   Studio II and Visicom paths are settled. Studio III already has a carefully
-  matched hardware default, and its colour banding makes this a lower priority,
-  but the eight-colour scope is still manageable.
+  matched hardware default, and its colour banding makes this a lower priority.
 - Keep palette selection an output customization only: it must not fork raster,
   DMA, colour-index, or machine state.
 

@@ -1,4 +1,5 @@
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/rcastudioii.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/audio/studio2_beeper.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/dpram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/numstick.sv
 set_global_assignment -name VERILOG_FILE rtl/cdp1802.v

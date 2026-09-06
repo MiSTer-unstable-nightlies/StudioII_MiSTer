@@ -209,14 +209,15 @@ localparam CONF_STR = {
 	"F1,ST2BIN,Load Cartridge;",
 	// Main sends chip8.bin from same dir as selected .ch8 before F3
 	"f,!chip8.bin;",
-	// Studio II/III only
-	"D3F3,CH8,Load CHIP-8;",
+	// CHIP-8 data can be preloaded regardless of the active machine.
+	"F3,CH8,Load CHIP-8;",
 	"-;",
-	// Machine held until Apply and reset
-	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
 	"F2,BINROM,Load Firmware;",
 	"F4,BIN,Load CHIP-8 Interpreter;",
-	"R[15],Apply and reset;",
+	"-;",	
+	// Machine held until Apply
+	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
+	"R[15],Apply and Reset;",
 	"-;",
 	"O[6],Mapping,Auto,Manual;",
 	// Order must match localparams in rtl/rcastudioii.sv
@@ -228,15 +229,20 @@ localparam CONF_STR = {
 	"D4O[19:17],NE555 pitch,Original,High,Higher,Highest,Lowest,Lower,Low;",
 	"D5O[20],CDP1863 pitch,Original,PAL;",
 	"-;",
-	"D7F5,VCP,Load Visicom Palette;",
-	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"O[122:121],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"d6O[21],Vertical Crop,Disabled,216p (5x);",
 	"d6O[25:22],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"O[12:11],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"O[26],Borders,On,Off;",
 	"-;",
+	"F6,GBP,Load Studio II Palette;",
+	"F5,GBP,Load Visicom Palette;",
+	"-;",
 	"T[1],Clear;",
+	"R[28],Unload Cartridge;",
 	"T[0],Reset;",
+	"R[27],Unload Cartridge and Reset;",
+	// Virtual mapping, not menu items
 	"J1,Fire,Extra,Start,Clear,A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,B0,B1,B2,B3,B4,B5,B6,B7,B8,B9;",
 	// jn is default virtual mapping
 	"jn,A,B,Start,Select;",
@@ -263,7 +269,7 @@ assign AUDIO_R = audio_out;
 // Pixie's timing generator is kept running which is
 // friendlier to display sync. TODO: This is very useful but 
 // still a hack and may need further scrutiny or refinement
-// in the future.
+// in the future. ~elle
 reg clear_key = 1'b0;
 always @(posedge clk_sys) begin
 	reg old_stb;
@@ -330,31 +336,46 @@ wire ce_pix = (ce_cnt == 2'd0);
 wire joy_clear = joystick_0[7] | joystick_1[7];
 wire clear_request = status[1] | clear_key | joy_clear;
 
-// Preserve raster timing on soft resets. F5 is a presentation-only Visicom
-// palette load and must not reach the machine loader or otherwise disturb the
+// Preserve raster timing on soft resets. F5/F6 are presentation-only palette
+// loads and must not reach the machine loader or otherwise disturb the
 // emulated machine.
 // Keep the classification for the whole transaction: Main may update the live
 // file index while replacing one selection, before download has gone inactive.
 reg       vis_palette_latched = 1'b0;
+reg       studio_palette_latched = 1'b0;
 wire      vis_palette_index = ioctl_index[5:0] == 6'd5;
+wire      studio_palette_index = ioctl_index[5:0] == 6'd6;
 wire      vis_palette_download = ioctl_download &&
 	                              (vis_palette_index || vis_palette_latched);
-wire      machine_download = ioctl_download && !vis_palette_download;
+wire      studio_palette_download = ioctl_download &&
+	                                 (studio_palette_index || studio_palette_latched);
+wire      palette_download = vis_palette_download || studio_palette_download;
+wire      machine_download = ioctl_download && !palette_download;
 wire      user_download_now = (ioctl_index[5:0] == 6'd1) ||
 	                          (ioctl_index[5:0] == 6'd2) ||
 	                          (ioctl_index[5:0] == 6'd3) ||
 	                          (ioctl_index[5:0] == 6'd4);
 reg       download_soft_latched = 1'b0;
 reg [7:0] download_reset_cnt = 8'd0;
-wire      download_reset = (ioctl_download && !vis_palette_download) |
+wire      download_reset = (ioctl_download && !palette_download) |
 	                       (download_reset_cnt != 0);
-wire      download_soft = (ioctl_download && !vis_palette_download) ?
+wire      download_soft = (ioctl_download && !palette_download) ?
 	                      user_download_now : download_soft_latched;
 
 always @(posedge clk_sys) begin
-	if (!ioctl_download)        vis_palette_latched <= 1'b0;
-	else if (vis_palette_index) vis_palette_latched <= 1'b1;
+	if (!ioctl_download) begin
+		vis_palette_latched <= 1'b0;
+		studio_palette_latched <= 1'b0;
+	end
+	else if (!vis_palette_latched && !studio_palette_latched) begin
+		if (vis_palette_index)         vis_palette_latched <= 1'b1;
+		else if (studio_palette_index) studio_palette_latched <= 1'b1;
+	end
 end
+
+// Cartridge eject actions share the same core-side unload path. Bit 27 also
+// hard-resets the machine; bit 28 deliberately leaves CPU and video running.
+wire cart_unload = status[27] | status[28];
 
 // RESET / Reset-and-close-OSD
 reg [7:0] hard_reset_cnt = 8'd0;
@@ -362,20 +383,21 @@ wire      hard_reset_hold = hard_reset_cnt != 0;
 reg       rom_loaded = 0;
 
 always @(posedge CLK_50M) begin
-	if (ioctl_download && !vis_palette_download) begin
+	if (ioctl_download && !palette_download) begin
 		download_reset_cnt <= 8'd255;
 		download_soft_latched <= user_download_now;
 	end
 	else if (download_reset_cnt != 0) download_reset_cnt <= download_reset_cnt - 8'd1;
 
-	if (RESET || status[0] || buttons[1]) hard_reset_cnt <= 8'd255;
+	if (RESET || status[0] || status[27] || buttons[1])
+	hard_reset_cnt <= 8'd255;
 	else if (hard_reset_cnt != 0) hard_reset_cnt <= hard_reset_cnt - 8'd1;
 
 	if(ioctl_download && (((ioctl_index[5:0] == 0) && (ioctl_index[15:6] < 10'd4)) ||
 	   (ioctl_index[5:0] == 2)) && ioctl_addr == 24'd100) rom_loaded <= 1'b1;
 end
 
-////////////////// Machine select: staged, applied on request ////////////////
+////////////////// Machine select and staging ////////////////
 //
 // status[14:13] Machine controlled only by "Apply and reset". Apply is R[15], status
 // bit 15. The reset itself gets the same duration a download's reset gets.
@@ -424,7 +446,7 @@ wire apply_hard_reset = (status[15] && apply_crossing_now) || (apply_reset && ap
 wire apply_soft_reset = apply_reset && !apply_hard_reset;
 
 // Hard reset win if sources overlap
-wire hard_reset = RESET | status[0] | buttons[1] | hard_reset_hold | ~rom_loaded | mach_reset |
+wire hard_reset = RESET | status[0] | status[27] | buttons[1] | hard_reset_hold | ~rom_loaded | mach_reset |
                   (download_reset && !download_soft) | apply_hard_reset;
 wire soft_reset = clear_request | (download_reset && download_soft) | apply_soft_reset;
 wire reset       = hard_reset | soft_reset;
@@ -447,6 +469,7 @@ rcastudioii rcastudio
 	.clk_sys(clk_sys),
 	.reset(reset),
 	.video_reset(video_reset),
+	.cart_unload(cart_unload),
 	
 	.ioctl_download(machine_download),
 	.ioctl_index(ioctl_index),
@@ -529,20 +552,18 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// D2 disables the manual Joystick row while Mapping is Auto. D3 disables the
-// CHIP-8 picker on Visicom. D4 disables NE555 tuning on the Studio III machines.
-// D5 enables the NTSC tone-pitch selector only on the Studio III NTSC. d6
-// enables 216p crop controls only for un-doubled 1080p. D7 enables the Visicom
-// palette picker only while Visicom is the active machine.
+// D2 disables the manual Joystick row while Mapping is Auto. D4 disables NE555
+// tuning on the Studio III machines. D5 enables the NTSC tone-pitch selector
+// only on the Studio III NTSC. d6 enables 216p crop controls only for
+// un-doubled 1080p. Loaders remain available regardless of the active machine:
+// their data is retained until the corresponding hardware path uses it.
 // Use machine_active so a staged selection does not take effect before Apply
 // and reset.
 assign status_menumask = ((!status[6]) ? 16'h0004 : 16'h0000) |
-	                     ((machine_active == 2'd3) ? 16'h0008 : 16'h0000) |
 	                     (((machine_active == 2'd1) ||
 	                       (machine_active == 2'd2)) ? 16'h0010 : 16'h0000) |
 	                     ((machine_active != 2'd2) ? 16'h0020 : 16'h0000) |
-	                     (en216p ? 16'h0040 : 16'h0000) |
-	                     ((machine_active != 2'd3) ? 16'h0080 : 16'h0000);
+	                     (en216p ? 16'h0040 : 16'h0000);
 
 // The scaler can't handle the very low res native raster. So the video
 // chain runs on the PLL's 42.24 MHz output and samples the core's pixel 
@@ -564,35 +585,54 @@ wire [7:0] vid_lvl = video_bg ? 8'h80 : 8'hFF;
 
 // Visicom's two colour planes produce a 2-bit hardware colour index. The
 // presentation-layer RGB mapping is replaceable without changing that hardware
-// emulation. These defaults use the Emma 02 reference palette.
-reg [23:0] vis_color0 = 24'h004000;
-reg [23:0] vis_color1 = 24'h70D0FF;
-reg [23:0] vis_color2 = 24'hD0FF70;
-reg [23:0] vis_color3 = 24'hFF7070;
+// emulation. These defaults use the balanced reference palette.
+reg [23:0] vis_color0 = 24'h11320C;
+reg [23:0] vis_color1 = 24'h5A93D5;
+reg [23:0] vis_color2 = 24'hB9B43D;
+reg [23:0] vis_color3 = 24'hD14C38;
 
 always @(posedge clk_sys) begin
 	if (vis_palette_download && ioctl_wr) begin
 		case (ioctl_addr)
-			25'd0:  vis_color0[23:16] <= ioctl_data;
-			25'd1:  vis_color0[15:8]  <= ioctl_data;
-			25'd2:  vis_color0[7:0]   <= ioctl_data;
+			// VCP and GBP both use lightest-to-darkest file order. Visicom
+			// hardware index 0 is the dark border/background colour, so the
+			// four RGB entries map to hardware indices 3, 2, 1, 0.
+			25'd0:  vis_color3[23:16] <= ioctl_data;
+			25'd1:  vis_color3[15:8]  <= ioctl_data;
+			25'd2:  vis_color3[7:0]   <= ioctl_data;
 
-			25'd3:  vis_color1[23:16] <= ioctl_data;
-			25'd4:  vis_color1[15:8]  <= ioctl_data;
-			25'd5:  vis_color1[7:0]   <= ioctl_data;
+			25'd3:  vis_color2[23:16] <= ioctl_data;
+			25'd4:  vis_color2[15:8]  <= ioctl_data;
+			25'd5:  vis_color2[7:0]   <= ioctl_data;
 
-			25'd6:  vis_color2[23:16] <= ioctl_data;
-			25'd7:  vis_color2[15:8]  <= ioctl_data;
-			25'd8:  vis_color2[7:0]   <= ioctl_data;
+			25'd6:  vis_color1[23:16] <= ioctl_data;
+			25'd7:  vis_color1[15:8]  <= ioctl_data;
+			25'd8:  vis_color1[7:0]   <= ioctl_data;
 
-			25'd9:  vis_color3[23:16] <= ioctl_data;
-			25'd10: vis_color3[15:8]  <= ioctl_data;
-			25'd11: vis_color3[7:0]   <= ioctl_data;
+			25'd9:  vis_color0[23:16] <= ioctl_data;
+			25'd10: vis_color0[15:8]  <= ioctl_data;
+			25'd11: vis_color0[7:0]   <= ioctl_data;
 
 			default: ;
 		endcase
 	end
 end
+
+// Studio II uses the standard GBP endpoints: colour 0 (lightest) for a set
+// PIXIE pixel and colour 3 (darkest) for a clear pixel. The two middle colours
+// remain part of the GBP file but are not used by the 1-bit display. The built-
+// in palette is ordinary white-to-black grayscale, preserving stock output.
+reg [127:0] studio_palette = 128'hFFFFFFAAAAAA55555500000000000000;
+
+always @(posedge clk_sys) begin
+	if (studio_palette_download && ioctl_wr)
+		studio_palette <= {studio_palette[119:0], ioctl_data};
+end
+
+wire [23:0] studio_fg = studio_palette[127:104];
+wire [23:0] studio_bg = studio_palette[55:32];
+wire [23:0] studio_rgb = video[2] ? studio_fg : studio_bg;
+wire machine_studio2 = (machine_active == 2'd0);
 
 wire machine_visicom = (machine_active == 2'd3);
 reg [23:0] vis_rgb;
@@ -605,9 +645,15 @@ always @(*) begin
 	endcase
 end
 
-wire [7:0] vid_r = machine_visicom ? vis_rgb[23:16] : (video[2] ? vid_lvl : 8'h00);
-wire [7:0] vid_g = machine_visicom ? vis_rgb[15:8]  : (video[1] ? vid_lvl : 8'h00);
-wire [7:0] vid_b = machine_visicom ? vis_rgb[7:0]   : (video[0] ? vid_lvl : 8'h00);
+wire [7:0] vid_r = machine_visicom ? vis_rgb[23:16] :
+                   machine_studio2 ? studio_rgb[23:16] :
+                   (video[2] ? vid_lvl : 8'h00);
+wire [7:0] vid_g = machine_visicom ? vis_rgb[15:8] :
+                   machine_studio2 ? studio_rgb[15:8] :
+                   (video[1] ? vid_lvl : 8'h00);
+wire [7:0] vid_b = machine_visicom ? vis_rgb[7:0] :
+                   machine_studio2 ? studio_rgb[7:0] :
+                   (video[0] ? vid_lvl : 8'h00);
 
 ////////////////// Numstick //////////////////
 
@@ -753,9 +799,6 @@ video_freak video_freak
     .SCALE({1'b0, status[12:11]})
 );
 
-//reg  [26:0] act_cnt;
-//always @(posedge clk_sys) act_cnt <= act_cnt + 1'd1; 
-//assign LED_USER = act_cnt[26] ? act_cnt[25:18] > act_cnt[7:0] : act_cnt[25:18] <= act_cnt[7:0];
 assign LED_USER = 1'b0;   // was undriven
 
 endmodule

@@ -1,6 +1,8 @@
 # Development reference
 
-Architecture, verification scope, and build mechanics live here. `AGENTS.md` contains permanent repository rules. Current RTL defines what is implemented; primary documentation and measured hardware define the target.
+Architecture, verification scope, and build mechanics live here. `AGENTS.md` contains 
+permanent repository rules. Current RTL defines what is implemented; primary 
+documentation and measured hardware define the target.
 
 Read the focused references when relevant:
 
@@ -17,13 +19,20 @@ Read the focused references when relevant:
 | Studio II | CDP1861, NTSC mono | discrete beeper | primary target |
 | Studio III PAL | CDP1864 | CDP1864 tone | 312-line PAL timing |
 | Studio III NTSC | CDP1861 + CDP1862 | CDP1863 | 1861 timing with separate colour |
-| Visicom COM-100 | CDP1861 + second DMA bitplane | NE555 compatibility beeper | separate memory map and fixed palette |
+| Visicom COM-100 | CDP1861 + second DMA bitplane | NE555 compatibility beeper | separate memory map and selectable indexed palette |
 
-The CPU, DMA video, raw and paged cartridges, four native firmware slots plus the CHIP-8 interpreter slot, machine memory maps, controller profiles, on-screen keypad, integer scaling, and sync-preserving same-standard resets are implemented. The loader intentionally models only 4 KB of cartridge address space; high-page diagnostics such as ST3CTA Tester 3 remain unsupported.
+The CPU, DMA video, raw and paged cartridges, four native firmware slots plus 
+the CHIP-8 interpreter slot, machine memory maps, controller profiles, 
+on-screen keypad, integer scaling, and sync-preserving same-standard resets are 
+implemented. The loader intentionally models only 4 KB of cartridge address space; 
+high-page diagnostics such as ST3CTA Tester 3 remain unsupported.
 
 ## Module and clock map
 
-`Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU, memory maps, cartridge loader, keypad/controller mapping, Studio II beeper, and machine selection.
+`Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU, 
+memory maps, cartridge loader, keypad/controller mapping, and machine selection. 
+`rtl/audio/studio2_beeper.sv` contains the Studio II/Visicom NE555 beeper. The 
+CRC-to-profile database is included from `rtl/studio2_cart_profiles.sv`.
 
 The Studio II/Visicom NE555 pitch selector occupies `status[19:17]`. Codes 0--6
 are Original, High, Higher, Highest, Lowest, Lower, and Low; unused code 7
@@ -55,9 +64,18 @@ Live video modules:
 - `rtl/pixie/cdp1864.v` — Studio III PAL video, colour, and tone timing.
 - `rtl/pixie/pixie_video.v` — 1861 wrapper.
 
-`clk_sys` is about 7.040229 MHz. `ce_pix` divides it by four to the approximately 1.760 MHz machine timebase; CPU machine cycles occur every eight `ce_pix` pulses. MiSTer video is resampled into `clk_vid` at about 42.24 MHz and presented to `video_mixer` at about 7.04 MHz, repeating each native pixel four times.
+`clk_sys` is about 7.040229 MHz. `ce_pix` divides it by four to the approximately 
+1.760 MHz machine timebase; CPU machine cycles occur every eight `ce_pix` pulses. 
+MiSTer video is resampled into `clk_vid` at about 42.24 MHz and presented to 
+`video_mixer` at about 7.04 MHz, repeating each native pixel four times.
 
-The Verilator harness normally holds `ce_pix` high. Use `--ce4` for reset release, CLEAR, DMA/CPU phase, or other clock-structure work, `--press-phase N` to sweep phase-sensitive input, `--beeper-tune medium|high|higher|highest|lowest|lower|low` to select the Studio II tuning (`medium` selects Original), and `--ntsc-tone-pitch original|pal` to select the Studio III NTSC pitch. The harness instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS boot ordering, Apply classification, OSD menu masking, or F1/F2 sync preservation.
+The Verilator harness normally holds `ce_pix` high. Use `--ce4` for reset release, 
+CLEAR, DMA/CPU phase, or other clock-structure work, `--press-phase N` to sweep 
+phase-sensitive input, `--beeper-tune medium|high|higher|highest|lowest|lower|low` 
+to select the Studio II tuning (`medium` selects Original), and 
+`--ntsc-tone-pitch original|pal` to select the Studio III NTSC pitch. The harness 
+instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS 
+boot ordering, Apply classification, OSD menu masking, or F1-F4 sync preservation.
 
 ## Video behavior
 

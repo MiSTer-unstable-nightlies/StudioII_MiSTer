@@ -1,19 +1,22 @@
-# Visicom palette evidence and future selection
+# Visicom palette evidence and selection
 
 This document keeps the Visicom COM-100 palette evidence, current comparison,
-and future user-selection requirements together. None of the observed print or
-capture values below is an accepted hardware-default palette.
+and palette-selection requirements together. The core currently defaults to the
+Emma 02 reference palette. None of the observed print or capture values below is
+an accepted hardware-default measurement. The definitive list and values of
+shipped `.vcp` files are maintained in [`palettes/README.txt`](../palettes/README.txt);
+this document provides supporting evidence and interpretation.
 
 ## Colour indices
 
 The core produces a two-bit Visicom colour index. The implemented lookup is:
 
-| Index | Conventional name | Current RGB |
+| Index | Conventional name | Default RGB |
 |---:|---|---:|
 | `0` | dark green; also border/background | `#004000` |
-| `1` | cyan | `#AFDFE4` |
-| `2` | yellow | `#B9C42F` |
-| `3` | red | `#EF454A` |
+| `1` | cyan | `#70D0FF` |
+| `2` | yellow | `#D0FF70` |
+| `3` | red | `#FF7070` |
 
 The names describe the current visible result; the two-bit index is the stable
 machine-facing identity. Plane-index order and the border/background
@@ -21,13 +24,13 @@ relationship still require hardware review independently of palette fitting.
 
 ## Emulator palettes
 
-The current core uses the same four values as MAME's Visicom driver. Emma 02
-uses the same background green and brighter, more pastel foreground colours.
+The current core defaults to the Emma 02 palette. MAME remains available as a
+distinct alternative, along with source-look and combined-reference palettes.
 
 | Source | `0` | `1` | `2` | `3` |
 |---|---:|---:|---:|---:|
-| Current core / MAME | `#004000` | `#AFDFE4` | `#B9C42F` | `#EF454A` |
-| Emma 02 | `#004000` | `#70D0FF` | `#D0FF70` | `#FF7070` |
+| Core default / Emma 02 | `#004000` | `#70D0FF` | `#D0FF70` | `#FF7070` |
+| MAME | `#004000` | `#AFDFE4` | `#B9C42F` | `#EF454A` |
 
 Source locations:
 
@@ -166,10 +169,11 @@ hardware calibration.
   evidence for its native level.
 
 The current conclusion is therefore narrow: MAME remains the better supported
-provisional default, but none of the supplied material yet justifies replacing
-it with a new hardware-derived table. The likely direction is MAME-like
-foreground hues with stronger manual-like saturation, not a direct copy of
-Emma 02 or any observed row above.
+measurement-oriented reference, but none of the supplied material yet justifies
+declaring a new hardware-derived table. Emma 02 remains the user-facing default
+because it is an established, useful reference palette. The likely direction
+for future hardware work is MAME-like foreground hues with stronger manual-like
+saturation, not a direct copy of Emma 02 or any observed row above.
 
 ### Working source interpretation
 
@@ -291,28 +295,47 @@ chroma amplitude, transfer, print attenuation, and possibly source sampling
 error. A future fit should start near `+15°` to `+20°`, then solve the other
 transforms without allowing index 1 alone to dictate phase.
 
-## Future selectable palettes
+## Shipped selectable palettes
 
 Palette selection is an output feature. It must consume the existing two-bit
 index and must not change raster timing, DMA, plane state, memory, controls, or
 machine reset behavior.
 
-The intended Visicom design has three layers:
+The implemented Visicom design has three layers:
 
-1. A named hardware-default preset, initially the current MAME table. Changing
-   the accepted default after better evidence updates one palette definition,
-   not the machine model.
-2. Named alternatives, at minimum MAME/current, Emma 02, and the user-preferred
-   Nicole Express source look. Any palette derived from a capture or printed
-   source must be labelled as that source's *look*, never as hardware truth.
-3. A user-supplied four-entry, 24-bit RGB palette that can be loaded without
-   editing HDL or running Quartus. This is the immediate path for applying new
-   measurements or personal preferences before a core release adopts them.
+1. A named built-in default, currently Emma 02. Changing the default after
+   better evidence updates one palette definition, not the machine model.
+2. Named alternatives in [`palettes/README.txt`](../palettes/README.txt):
+   MAME, Emma 02, balanced, box-art print and adjusted, Nicole Express, and
+   FLiP. Any palette derived from a capture or printed source must be labelled
+   as that source's *look*, never as hardware truth.
+3. A user-supplied four-entry, 24-bit RGB palette loaded without editing HDL or
+   running Quartus. This is the immediate path for applying new measurements or
+   personal preferences before a core release adopts them.
 
-The eventual external format and MiSTer loading route remain implementation
-decisions. Whatever route is selected must satisfy these requirements:
+The `.vcp` format and MiSTer loading route are implemented. VCP and MiSTer
+Game Boy `.gbp` files use the same 16-byte format and lightest-to-darkest file
+ordering: four RGB888 entries followed by four reserved zero bytes. Ordinary
+`.gbp` files may therefore be loaded directly.
 
-- define exactly four entries in index order `0` through `3`;
+Visicom consumes those four file entries in reverse hardware-index order:
+
+```text
+file entry 0 -> index 3
+file entry 1 -> index 2
+file entry 2 -> index 1
+file entry 3 -> index 0
+```
+
+The final file entry therefore controls index `0`, the dark green
+border/background colour. This deliberately aligns the darkest GBP shade with
+the Visicom background. The other three entries become the three foreground
+colours; they are not claimed to form a strict luminance hierarchy.
+
+The following invariants describe the route and its acceptance requirements:
+
+- define exactly four RGB888 entries plus four reserved zero bytes;
+- accept `.vcp` and `.gbp` through the same byte ordering and lookup path;
 - accept arbitrary 24-bit RGB values;
 - apply changes at the final indexed-colour lookup without a machine reset;
 - fall back safely to the selected built-in preset when a file is missing,
@@ -330,11 +353,13 @@ optional source-look presets, but they are not approved preset constants yet.
 Freeze every such preset only with its provenance and transformation caveats
 attached.
 
-## Acceptance checks for the future implementation
+## Acceptance checks for palette changes
 
 - Exhaustively verify all four index-to-RGB mappings for every built-in preset.
-- Verify valid and invalid custom-palette loads, fallback, reload, and index
-  order.
+- Verify valid and invalid custom-palette loads, fallback, reload, and the
+  `0->3`, `1->2`, `2->1`, `3->0` file-entry mapping.
+- Load at least one ordinary `.gbp` file directly and verify that its final
+  entry controls Visicom index `0`.
 - Prove palette changes do not reset or alter machine, raster, DMA, or plane
   state.
 - Capture the same reviewed test pattern over HDMI and direct video.

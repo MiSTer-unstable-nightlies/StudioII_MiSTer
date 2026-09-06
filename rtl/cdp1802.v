@@ -79,13 +79,9 @@ module cdp1802 (
   input      [7:0]    ram_q,      // RAM read data
   output     [7:0]    ram_d      // RAM write data
 
-  //output  wire         TPA,        // Timing Pulse  (RAM)
-  //output  wire         TPB         // Timing Pulse  (IO)
 );
 
-  // ---------- control signals -------------------------- 
-  //reg   waiting;
-  //assign waiting = (wait_req && resetq) ? 1'b1 : 1'b0;  
+  // ---------- control signals --------------------------
   reg   IE;   // Interrupt Enable
 
   // ---------- execution states -------------------------
@@ -102,18 +98,6 @@ module cdp1802 (
   localparam INTERRUPT = 4'd9;    // S3 Interrupt state
   localparam IDLE      = 4'd10;   //    IDL, waiting for DMA or interrupt
   localparam LSKIP     = 4'd11;   //    long-skip family (C4-C7, CC-CF), 3rd cycle
-
-/*
-  localparam RESET [3:0]     = 4'b0000;  // sc_execute
-  localparam RESET2 [3:0]    = 4'b0001;  // sc_execute
-  localparam LOAD [3:0]      = 4'b0010;  // sc_execute
-  localparam FETCH [3:0]     = 4'b0011;  // sc_fetch
-  localparam EXECUTE [3:0]   = 4'b0100;  // sc_execute
-  localparam EXECUTE2 [3:0]  = 4'b0101;  // sc_execute
-  localparam DMA_IN [3:0]    = 4'b0110;  // sc_dma
-  localparam DMA_OUT [3:0]   = 4'b0111;  // sc_dma
-  localparam INTERRUPT [3:0] = 4'b1000;  // sc_interrupt
-*/ 
 
   // ---------- registers --------------------------------
   reg   [3:0] P;                  // Program Counter
@@ -137,25 +121,6 @@ module cdp1802 (
                  ({I, N} == 8'h78) ? T      :
                  ({I, N} == 8'h79) ? {X, P} : D;
   assign ram_a = Rrd;             // RAM address always one of the 16-bit regs
-
-/*
-  // TPA TPB
-  // TPA occurs every 8 cycles, TPA precedes TPB
-  reg [7:0] TP_counter = 0;
-  wire TPA_ = 0;
-  wire TPB_ = 1;
-  assign TPA = TPA_;
-  assign TPB = TPB_;
-  always @(posedge CLOCK) begin
-    if(TP_counter == 7) begin
-      TPA_ <= ~TPA_;
-      TPB_ <= ~TPB_;
-      TP_counter <= 0;
-    end
-    else
-      TP_counter <= TP_counter + 1;
-  end
-*/
 
   // ---------- conditional branch -----------------------
   reg sense;
@@ -329,13 +294,6 @@ module cdp1802 (
   // OUT sends M(R(X)), which is the byte read during this EXECUTE cycle
   assign io_dout = ram_q;
   assign unsupported = 1'b0;      // RET/DIS/SAV/MARK/IDL all implemented
-  /*
-  always @(posedge CLOCK) begin
-    if(unsupported) begin
-      $display("Unsupported instruction: %h", {I, N});
-    end
-  end
-  */
   // ---------- cycle commit -----------------------------
   always @(negedge CLEAR_N or posedge CLOCK) begin
     // CLEAR WAIT Control Lines
@@ -344,13 +302,6 @@ module cdp1802 (
     // Clear 1 Wait 0 Pause
     // Clear 1 Wait 1 Run
     // Reset
-    /*
-    if (cpuMode_ != RUN)
-    {
-        if (p_Video != NULL)
-            p_Video->reset();
-    }
-    */
     if (!CLEAR_N) begin
         // 1802 reset leaves I=N=0, Q=0, X=0, P=0, R(0)=0 and IE=1
         {Q, P, X} <= 0;

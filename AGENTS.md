@@ -23,6 +23,7 @@ Read this entire file every session. It is deliberately limited to durable agent
 - `Studio-II.sv` is the `emu` top; keep MiSTer-facing policy there and machine behavior in `rtl/rcastudioii.sv` or the relevant device module.
 - `bitmap_de`/core `video_de` is capture-only. Normal output DE comes from raster blanking through `video_mixer`.
 - Preserve the separate machine-reset and video-reset policy: CLEAR, cartridge/firmware loads, and same-standard Apply keep raster timing live; PAL/NTSC changes are hard resets.
+- Preserve cartridge unload semantics: both unload actions clear active cartridge/CHIP-8 state through the shared unload path; only **Reset and Unload Cartridge** resets the machine. Unloading must not destroy per-machine cached cartridge contents or remembered resident mappings.
 - Preserve instruction-boundary interrupt/DMA acceptance, held DMA requests, and the deliberate CDP1861 phase/EF timing.
 - Keep Studio II signed beeper audio isolated from the Studio III programmable-tone path. Output controls such as mute must not reset or fork generator state.
 - Use explicit widths and signedness. Keep counters/functions wide enough for their declared maxima; do not rely on implicit truncation or widening.

@@ -27,6 +27,7 @@ module rcastudioii
 	input              clk_sys,
 	input              reset,
 	input              video_reset,
+	input              cart_unload,
 	
 	input wire         ioctl_download,
 	input wire  [15:0] ioctl_index,
@@ -106,206 +107,20 @@ reg  chip8_write_seen = 1'b0;
 reg  chip8_fw_start_seen = 1'b0;
 wire chip8_active = chip8_loaded && !machine_visicom;
 wire preserve_sync_reset = reset && !video_reset;
-
-////////////////// VIDEO //////////////////////////////////////////////////////////////////
-
-wire        Disp_On;
-wire        Disp_Off;
-// SC is driven by the CPU's output port, so it must be a net -- declaring it a reg with an
-// initial value of 2'b10 meant the 1861 saw a constant "DMA" state code.
-wire [1:0]  SC;
-
-wire        INT;
-wire        DMAO;
-wire        EFx;
-
-
-pixie_video pixie_video (
-    // front end, CDP1802 bus clock domain
-    .clk        (clk_sys),    // I
-    .reset      (video_reset),             // I: soft resets keep raster timing alive
-
-    .clk_enable (ce_pix),     // I
-    .cpu_ce     (cpu_ce),     // I  CPU machine-cycle enable, for sampling DMA bytes
-
-    .SC         (SC),         // I [1:0]
-    // INP 1 turns the display on, OUT 1 turns it off (the BIOS enables it via CALL $0066). These
-    // were tied on/off, so the display could never be disabled and the 1861 started generating
-    // interrupts from reset instead of from the moment the BIOS enabled it. The earlier commented
-    // version keyed off io_n[0] alone, which cannot tell INP 1 from OUT 1.
-    // The Visicom enables the display with OUT 1 rather than INP 1, and has no
-    // disable port at all -- Emma 02's config carries a single <out type="on">1
-    // where the Studio II carries <out>1 and <in>1, which its parser turns into
-    // PIXIE_OUT_OUT with only the enable populated.
-    .disp_on    (machine_visicom ? (io_out && (io_n == 3'd1))
-                                 : (io_inp && (io_n == 3'd1))),  // I
-    .disp_off   ((!machine_visicom && io_out && (io_n == 3'd1)) || preserve_sync_reset),  // I: blank while preserving raster timing
-
-
-    .data_in    (ram_q),      // I [7:0]  byte the CPU delivers during a DMA-OUT cycle
-    .vis_mode   (machine_visicom),  // I
-    .data_in2   (pl1_q),      // I [7:0]  Visicom plane 1: the byte $200 higher
-    .colour_in  (colour_dot), // I  CDP1862 colour for that byte (NTSC Studio III)
-    .con        (colour_on),  // I
-    .bg_step    (io_out && (io_n == 3'd1) && !machine_visicom),  // I  OUT 1 steps the background
-
-    .DMAO       (DMAO_61),    // O
-    .INT        (INT_61),     // O
-    .EFx        (EFx_61),     // O
-
-    // back end, video clock domain
-    .video_clk  (clk_sys),    // I
-    .csync      (),           // O
-    .video      (video_dot),  // O  one bit: the 1861 is a monochrome part
-    .colour_out    (col61_dot),
-    .vis_index     (vis_index),
-    .bg_active     (col61_bg),
-    .bg_colour_out (col61_bgc),
-
-    .VSync      (VSync_61),   // O
-    .HSync      (HSync_61),   // O
-    .VBlank     (VBlank_61),  // O
-    .HBlank     (HBlank_61),  // O
-    .video_de   (de_61),      // O
-    .bitmap_de  (bde_61),     // O
-    .bitmap_hblank(bhb_61),
-    .bitmap_vblank(bvb_61)
-);
-
-// ---- CDP1864, the colour machines' video ---------------------------------
-// Both parts are instantiated and the active one selected, rather than making
-// one module's geometry runtime-switchable: the 1861's timing is delicately
-// tuned and documented as such, and both parts are tiny. See the header of
-// rtl/pixie/cdp1864.v.
-//
-// Note the different I/O decode. On the 1864 the display is turned off by INP 4,
-// not OUT 1 -- OUT 1 is taken over by the background colour step. The datasheet
-// gives the opcodes: 61 or 69 enable interrupt and DMA, 6C disables them.
-wire       DMAO_64, INT_64, EFx_64;
-wire       VSync_64, HSync_64, VBlank_64, HBlank_64, de_64, bde_64, bg_64;
-wire       bhb_64, bvb_64;
-wire [2:0] video_64;
-
-cdp1864 cdp1864
-(
-    .clk        (clk_sys),
-    .ce_pix     (ce_pix),
-    .cpu_ce     (cpu_ce),
-    .reset      (video_reset),
-
-    .SC         (SC),
-    .data_in    (ram_q),
-    .colour_in  (colour_dot),
-    .con        (colour_on),
-    .disp_on    (io_inp && (io_n == 3'd1)),
-    .disp_off   ((io_inp && (io_n == 3'd4)) || preserve_sync_reset),
-    .bg_step    (io_out && (io_n == 3'd1)),
-
-    .DMAO       (DMAO_64),
-    .INT        (INT_64),
-    .EFx        (EFx_64),
-
-    .csync      (),
-    .video      (video_64),
-    .bckgnd     (bg_64),
-    .VSync      (VSync_64),
-    .HSync      (HSync_64),
-    .VBlank     (VBlank_64),
-    .HBlank     (HBlank_64),
-    .video_de   (de_64),
-    .bitmap_de  (bde_64),
-    .bitmap_hblank(bhb_64),
-    .bitmap_vblank(bvb_64)
-);
-
-// ---- tone generator -------------------------------------------------------
-// The CDP1864 integrates this; the NTSC Studio III has it as a separate CDP1863
-// beside its 1861 and 1862. Same latch on OUT 4 and the same gate on Q either
-// way, differing only by one division stage -- so one instance serves both, with
-// div4 picking the chain. Straight from the datasheet's control-line truth table
-// and Weisbecker's Studio III notes ("64 instruction sets sound frequency
-// (inverse)", "Q gates sound output").
-wire aud_tone;
-cdp1863 cdp1863
-(
-    .clk     (clk_sys),
-    .cpu_ce  (cpu_ce),
-    .reset   (video_reset | (preserve_sync_reset & ~clear_key)),
-    // The 1864's integrated generator has an extra divide-by-4 that the
-    // standalone 1863 does not, so the same latch sounds four times higher on
-    // the NTSC machine. MAME: cdp1864 f = clk/8/4/(latch+1)/2 against cdp1863
-    // f = clk/8/(latch+1)/2 from its clock2 input, which is where TPB goes.
-    .div4    ((machine == MACHINE_S3_PAL) ||
-              ((machine == MACHINE_S3_NTSC) && ntsc_pal_pitch)),
-    .tone_we (io_out && (io_n == 3'd4)),
-    .tone_d  (cpu_dout),
-    .aoe     (Q),
-    .aud     (aud_tone)
-);
-
-// ---- select ---------------------------------------------------------------
-// The Studio II's 1861 has no colour, so every channel follows its single dot
-// bit -- white on black, unchanged from before the video path widened.
-wire       video_dot;
-wire       DMAO_61, INT_61, EFx_61;
-wire       VSync_61, HSync_61, VBlank_61, HBlank_61, de_61, bde_61;
-wire       bhb_61, bvb_61;
-wire [2:0] col61_dot, col61_bgc;
-wire       col61_bg;
-wire [2:0] video_61;
-wire       bg_61;
-
-// The CDP1862 beside the 1861, fitted only on the NTSC Studio III. On a Studio II
-// `enable` is low and it passes the luminance bit straight through as white.
-cdp1862 cdp1862
-(
-    .enable     (machine == MACHINE_S3_NTSC),
-    .luminance  (video_dot),
-    .in_raster  (de_61),
-    .dot_colour (col61_dot),
-    .bg_active  (col61_bg),
-    .bg_colour  (col61_bgc),
-    .video      (video_61),
-    .bckgnd     (bg_61)
-);
-
-// The Visicom's four colours do not fit a 1-bit-per-channel bus, so the exact
-// palette is applied at the top level (Studio-II.sv) from vis_index. What
-// goes out here is the nearest 3-bit approximation, which is what the Verilator
-// harness captures -- the four colours stay distinguishable in a PNG or an
-// ASCII dump, which is all that side needs.
-reg  [2:0] vis_approx;
-always @(*) begin
-	case (vis_index)
-		2'd0:    vis_approx = 3'b010;   // background: dark green
-		2'd1:    vis_approx = 3'b011;   // cyan
-		2'd2:    vis_approx = 3'b110;   // yellow
-		default: vis_approx = 3'b100;   // red
-	endcase
-end
-
-assign video    = machine_visicom ? vis_approx : (machine_mpt02 ? video_64 : video_61);
-assign DMAO     = machine_mpt02 ? DMAO_64  : DMAO_61;
-assign INT      = machine_mpt02 ? INT_64   : INT_61;
-assign EFx      = machine_mpt02 ? EFx_64   : EFx_61;
-
-always @(*) begin
-	VSync    = machine_mpt02 ? VSync_64  : VSync_61;
-	HSync    = machine_mpt02 ? HSync_64  : HSync_61;
-	VBlank   = machine_mpt02 ? VBlank_64 : VBlank_61;
-	HBlank   = machine_mpt02 ? HBlank_64 : HBlank_61;
-	video_de = machine_mpt02 ? de_64     : de_61;
-	bitmap_de = machine_mpt02 ? bde_64   : bde_61;
-	bitmap_hblank = machine_mpt02 ? bhb_64 : bhb_61;
-	bitmap_vblank = machine_mpt02 ? bvb_64 : bvb_61;
-	video_bg  = machine_mpt02 ? bg_64    : bg_61;
-end
+wire [2:0] io_n;
+wire       io_inp;
+wire       io_out;
+wire inp1 = io_inp && (io_n == 3'd1);
+wire inp4 = io_inp && (io_n == 3'd4);
+wire out1 = io_out && (io_n == 3'd1);
+wire out2 = io_out && (io_n == 3'd2);
+wire out4 = io_out && (io_n == 3'd4);
 
 ////////////////// KEYPAD //////////////////////////////////////////////////////////////////
 
 //The CPU selects the key to scan with OUT 2, latched into a CD4515.
 reg  [3:0] keylatch = 4'h0;
-always @(posedge clk_sys) if(io_out && (io_n == 3'd2)) keylatch <= cpu_dout[3:0];
+always @(posedge clk_sys) if(out2) keylatch <= cpu_dout[3:0];
 
 wire       pressed = ps2_key[9];
 wire [7:0] code    = ps2_key[7:0];
@@ -346,750 +161,7 @@ reg  [9:0] playerB = 10'h0;
 
 
 ////////////////// JOYSTICK -> KEYPAD ///////////////////////////////////////
-//
-// The Studio II has no joystick: every game is played on the 10-key pads, and
-// keys vary by game. A CRC16 of the image is taken while it downloads and looked up
-// in a table below; the result selects one of a few profiles.
-//
-// MiSTer joystick bits, per the CONF_STR "J1,..." list in Studio-II.sv:
-//   [0]=right [1]=left [2]=down [3]=up   [4]=Fire   [5]=Extra   [6]=Start
-//   [7]=Select(CLEAR, folded into reset by the top level)
-//   [17:8]=A0..A9   [27:18]=B0..B9.
-// Fire/Extra mirror the MPT-02 joystick (the Soundic/Hanimex Studio III
-// machines' swappable keypad controller): fire on 5, a second button on 0.
-// A0..B9 are direct per-key bindings with no default mapping: they are inert
-// until the user binds them in Define Buttons, and then they always work, on
-// top of whatever profile is active.
-
-// The profile is 4 bits internally; the OSD override (joy_override) is 4, so
-// the menu can force any of the 16 encoded profiles.
-// Keep the numeric values aligned with the OSD list so a user selection selects
-// the correct profile.
-localparam [3:0] MAP_NONE       = 4'd0;   // no controller mapping; keep keypad/OSK input only
-localparam [3:0] MAP_CROSS      = 4'd1;   // 2/8/4/6 + 5 fire, both pads
-localparam [3:0] MAP_SPACEWAR   = 4'd2;   // fire A2, steer B4/B6
-localparam [3:0] MAP_FREEWAY    = 4'd3;   // Studio II uses A for speed and B to steer;
-                                          // Visicom puts every control on B
-localparam [3:0] MAP_BOWLING    = 4'd4;   // roll 5, hook 2/8 on the active A/B pad
-localparam [3:0] MAP_BASEBALL   = 4'd5;   // bat A5; pitch B5 straight, B2/B8 curve
-localparam [3:0] MAP_HOMEBREW   = 4'd6;   // Paul Robson's 1P games: 8-way on pad A
-                                          // (diagonals are keys 1/3/7/9), fire B0
-localparam [3:0] MAP_VIS_ART    = 4'd7;   // Visicom Doodle/Patterns: directions B,
-	                                          // Fire B5, Extra B0
-localparam [3:0] MAP_8WAY       = 4'd8;   // CROSS plus diagonals: 1/3/7/9, fire 5 + extra 0
-localparam [3:0] MAP_DOODLE     = 4'd9;   // Doodle/Patterns: B-side 8-way, fire 5, extra 0
-localparam [3:0] MAP_HB2P       = 4'd10;  // 2P homebrew (Hockey, Combat): cross plus
-                                          // fire-on-0, each player's own pad. Normally
-                                          // chosen by CRC, but also exposed in the OSD
-                                          // list as "2P Homebrew" for manual override.
-localparam [3:0] MAP_RACE       = 4'd11;  // A-side 8-way; Fire is an independent A2
-                                          // so acceleration can be held while steering
-localparam [3:0] MAP_TENNIS     = 4'd12;  // Gunfighter/Tennis. Auto/1P uses keypad B;
-                                          // 2P splits the matching A/B controls.
-                                          // Tennis/Squash uses left/fire/right for
-                                          // racket size and Extra for pause.
-localparam [3:0] MAP_CHIP8      = 4'd13;  // common CHIP-8 movement cluster: 5/7/8/9
-                                          // on pad A; Start 1, Fire F, Extra 0.
-localparam [3:0] MAP_CLIMB      = 4'd14;  // Climber/Outbreak: A-side movement, Fire
-                                          // replays on B1, Extra modifies left/right
-                                          // with matching B4/B6 for Outbreak speed
-localparam [3:0] MAP_EXPLORER   = 4'd15;  // Space Explorer: B-side 8-way, Fire A0,
-                                          // Extra locks with B5
-
-reg [3:0] map_profile = MAP_NONE;
-
-// ---- CRC16-CCITT over the cartridge image, computed during ioctl_download ----
-// Seed on the first byte and hold the result after the download ends -- clearing
-// it whenever ioctl_download is low would wipe the CRC before it could be used.
-reg [15:0] cart_crc = 16'hFFFF;
-reg        dl_d;
-wire       dl_done = dl_d & ~ioctl_download;      // falling edge: download finished
-
-always @(posedge clk_sys) begin
-	integer i;
-	reg [15:0] c;
-	dl_d <= ioctl_download;
-	if (cart_dl && ioctl_download && !dl_d) begin
-		cart_crc <= 16'hFFFF;
-	end
-	if (cart_dl && ioctl_wr) begin
-		c = (ioctl_addr == 0) ? 16'hFFFF : cart_crc;
-		c = c ^ {ioctl_dout, 8'h00};
-		for (i = 0; i < 8; i = i + 1)
-			c = c[15] ? ((c << 1) ^ 16'h1021) : (c << 1);
-		cart_crc <= c;
-	end
-end
-
-// ---- CRC → profile + Start key ------------------------------------------------
-// Add a cartridge by running tools/cart-crc.sh and dropping one line into the
-// matching group below.  Groups are ordered by (map_profile, start_key) so
-// related dumps stay together.  Comments list the human names.
-//
-// start_key is the keypad-A digit that the gamepad Start button presses.
-// Default / no-cart = 1 (most common).
-
-reg [3:0] start_key = 4'd1;
-
-always @(posedge clk_sys) begin
-	if (dl_done) begin
-		case (cart_crc)
-
-			// ----------------------------------------------------------------
-			// Retail / known controller mappings
-			// ----------------------------------------------------------------
-
-			// TV Arcade I - Space War
-			16'h45B5, 16'h977C: begin
-				map_profile <= MAP_SPACEWAR;
-				start_key   <= 4'd1;
-			end
-
-			// Pinball
-			// Speedway + Tag
-			// Star Wars
-			// These cartridges use the MPT-02 joystick cross layout.
-			16'h03E6, 16'h8404, 16'h92BA, 16'h9505, 16'hD0DA, 16'hD13E,
-			16'hD3E2, 16'hE153: begin
-				map_profile <= MAP_CROSS;
-				start_key   <= 4'd1;
-			end
-
-			// Fifteen Puzzle
-			// Invasion, The v1.00
-			// Rocket v1.01
-			16'h127F, 16'h13A3, 16'h2DDB, 16'h3244, 16'h9562,
-			16'hD2F0, 16'hD481, 16'hF7A3: begin
-				map_profile <= MAP_CROSS;
-				start_key   <= 4'd1;
-			end
-
-			// Sports Fan (Baseball & Sumo Wrestling) (CAS-130)
-			16'h0192, 16'h8D88, 16'hD4A0: begin
-				map_profile <= MAP_CROSS;
-				start_key   <= 4'd0;
-			end
-
-			// TV Arcade IV - Baseball
-			16'h2526, 16'hF837: begin
-				map_profile <= MAP_BASEBALL;
-				start_key   <= 4'd0;
-			end
-
-			// TV Arcade Series - Gunfighter + Moonship Battle
-			16'h043E, 16'h3CDC: begin
-				map_profile <= MAP_TENNIS;
-				start_key   <= 4'd1;
-			end
-
-			// TV Arcade III - Tennis + Squash
-			16'h88FB, 16'hFB76: begin
-				map_profile <= MAP_TENNIS;
-				start_key   <= 4'd1;
-			end
-
-			// Game Pack / Grand Pack. Auto selects their first program, Doodle;
-			// the numeric and differently controlled programs remain accessible
-			// through direct keypad input or a manual profile.
-			16'h1594, 16'h3505, 16'h74AB, 16'h815E,
-			16'hEF21, 16'hFC34, 16'hFC72: begin
-				map_profile <= MAP_DOODLE;
-				start_key   <= 4'd1;
-			end
-
-
-			// ----------------------------------------------------------------
-			// Homebrew: single-player (Paul Robson scheme)
-			// ----------------------------------------------------------------
-
-			// Asteroids / Asteroids Visicom
-			16'h1943, 16'hFBEF, 16'h1973, 16'h2B4D,
-			16'h6EE1, 16'hA008, 16'hAAFB, 16'hE977: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd5;
-			end
-
-			// Berzerk / Berzerk Visicom v1/v2/v3
-			16'h4F61, 16'hAEC7, 16'h787D, 16'hE080,
-			16'h2E9E, 16'h2143, 16'h21A3, 16'h4771, 16'h7C7D, 16'h73A0: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd5;
-			end
-
-			// Invaders v1/v2/v3 / Invaders Color (MPT-02)
-			16'h6F69, 16'h7A5E, 16'hADAB, 16'h0D1D, 16'h69AA, 16'h2D86, 16'h5AC5,
-			16'h937A, 16'hA9DA, 16'hFB00: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd0;
-			end
-
-			// Kaboom / Kaboom Color (MPT-02)
-			16'h6793, 16'hDFCF, 16'h8551, 16'h18DB, 16'h08D3, 16'hF42A: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd0;
-			end
-
-			// Pacman / Pacman Visicom
-			16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4, 16'hB99C: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd0;
-			end
-
-			// Scramble / Scramble Color (MPT-02)
-			16'hBA0B, 16'hE45F, 16'hFAA9, 16'h1280, 16'hD9F3, 16'hD341, 16'hFE3F: begin
-				map_profile <= MAP_HOMEBREW;
-				start_key   <= 4'd6;
-			end
-
-
-			// ----------------------------------------------------------------
-			// Homebrew: two-player (Paul Robson scheme)
-			// ----------------------------------------------------------------
-
-			// Combat v1/v2/v3 / Combat Visicom
-			16'h4ADA, 16'h188E, 16'hD87F,
-			16'h54C7, 16'h4AA2, 16'hABBA, 16'h4009,
-			16'hB70E, 16'h650C, 16'hE142, 16'hFD35: begin
-				map_profile <= MAP_HB2P;
-				start_key   <= 4'd1;
-			end
-
-			// Hockey v1/v2/v3 / Hockey Visicom v1/v2
-			16'h114A, 16'h4F55, 16'hD5DE,
-			16'h554B, 16'h1154, 16'hDE71, 16'hD753,
-			16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2, 16'hB075: begin
-				map_profile <= MAP_HB2P;
-				start_key   <= 4'd1;
-			end
-
-
-			// ----------------------------------------------------------------
-			// Homebrew: dedicated single-player layouts
-			// ----------------------------------------------------------------
-
-			// Climber v1.00
-			16'h1139, 16'hAD6A: begin
-				map_profile <= MAP_CLIMB;
-				start_key   <= 4'd3;
-			end
-
-			// Outbreak v1.00
-			16'hA83F, 16'hBE58: begin
-				map_profile <= MAP_CLIMB;
-				start_key   <= 4'd0;
-			end
-
-			// Space Explorer
-			16'h0C03, 16'h92C7: begin
-				map_profile <= MAP_EXPLORER;
-				start_key   <= 4'd1; // ignored: this program starts directly
-			end
-
-
-			// ----------------------------------------------------------------
-			// Keypad-only software. MAP_NONE preserves the verified Start key
-			// without inventing directional or action-button controls.
-			// ----------------------------------------------------------------
-
-			// A Cheap Graphics Computer
-			// Concentration + Match
-			// TV Arcade II - Fun with Numbers
-			// TV Casino Series - Blackjack
-			// TV Casino Series - TV Bingo
-			// TV School House I / II - Math Fun
-			16'h0ECC, 16'h29B8, 16'h31AE, 16'h3731, 16'h7A43,
-			16'h7D85, 16'h9D0D, 16'hAF65, 16'hB2FF, 16'hBBC8,
-			16'hBD53, 16'hC8B4, 16'hCEC2, 16'hEE76: begin
-				map_profile <= MAP_NONE;
-				start_key   <= 4'd1;
-			end
-
-			// TV Mystic Series - Biorhythm
-			// Visicom Inspiration (Fortunetelling & Biorhythm)
-			// Visicom Gambler I / II, Sansu Drill, and Space Command
-			// Q-Sound Test
-			16'h12E8, 16'h2BC5, 16'h2F1A, 16'h5433, 16'h8CDE,
-			16'h9BCF, 16'h9F6E, 16'hA7DF, 16'hB7A7, 16'hBF97,
-			16'hC106,
-			16'hC7C6, 16'hDA69, 16'hDCFA, 16'hE4C4, 16'hEBF4,
-			16'hF178: begin
-				map_profile <= MAP_NONE;
-				start_key   <= 4'd0;
-			end
-
-
-			// ----------------------------------------------------------------
-			// Additional known cartridge mappings
-			// ----------------------------------------------------------------
-
-			// RCA Studio II Resident Games
-			16'hB5BF: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Flappy Pixel
-			16'h6D1D, 16'hD124: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Race / Race Colour v1/v2
-			16'h47EA, 16'h5374, 16'h5638, 16'h797C,
-			16'hD6C0, 16'hFCC8: begin
-				map_profile <= MAP_RACE;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Point of Sale Demonstration Cartridge
-			16'hB334, 16'h3EAF: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Move 1
-			16'hD8C2: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Move 2
-			16'hFF76: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Move 3
-			16'h0856: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Random 1
-			16'h51A6: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Random 2
-			16'h4447: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Show Key
-			16'hC78E: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Programming Examples - Tone
-			16'hC903: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// Studio II Test Cartridge
-			16'h7BB6, 16'h79C5: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// TV Arcade 2012
-			16'hE3CF, 16'h4B55: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= 4'd1;
-			end
-
-			// ----------------------------------------------------------------
-			// Existing recognized no-controller entries
-			//
-			// These hashes were present in the previous mapping table but
-			// are not identified by name in the supplied CRC inventory.
-			// Preserve their existing behavior rather than guessing.
-			// ----------------------------------------------------------------
-
-			16'h1634, 16'hB76F: begin
-				map_profile <= MAP_NONE;
-				start_key   <= 4'd15; // no verified Start key
-			end
-
-
-			// ----------------------------------------------------------------
-			// Fallback
-			// ----------------------------------------------------------------
-
-			// Every Visicom cartridge dumped so far starts on 0, not 1 -- Emma
-			// 02's FaqVisicomCartridges says "to start press 0" (or space, which
-			// is its keypad-A 0) for all of them, and the built-in games use
-			// 1/2/3/4/7 instead. The machine fallback covers forms without an
-			// explicit CRC entry.
-			default: begin
-				map_profile <= MAP_8WAY;
-				start_key   <= machine_visicom ? 4'd0 : 4'd1;
-			end
-
-		endcase
-	end
-end
-
-// ---- built-in games -------------------------------------------------------
-// With no cartridge there is nothing to CRC, so resident games are told apart
-// by the firmware menu key that starts them. Only the first recognized press
-// after reset counts because those keys are reused during play.
-
-wire       no_cart = !chip8_active && (cart_crc == 16'hFFFF);
-reg        builtin_sel;
-reg  [3:0] builtin_profile;
-reg  [3:0] builtin_start_key;
-
-// Consider on-screen keypad (osk_a) as well as the physical keypad for
-// selecting built-in games. Treat the on-screen keypad's key at
-// active_start_key as a Start press so numstick users can activate by the OSK.
-wire [9:0] builtin_padA = playerA | osk_a;
-wire        builtin_start_press = start_press | osk_a[active_start_key];
-
-always @(posedge clk_sys) begin
-	if (reset) begin
-		builtin_sel       <= 1'b0;
-		builtin_profile   <= MAP_NONE;
-		builtin_start_key <= 4'd1;
-	end
-	else if (no_cart && !builtin_sel) begin
-		case (machine)
-		MACHINE_STUDIO2: begin
-			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
-			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
-			// A3 = BOWLING; A4 = FREEWAY. If the service manual claims otherwise, it's wrong.
-			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
-			else if (builtin_padA[4]) begin builtin_profile <= MAP_FREEWAY; builtin_sel <= 1'b1; end  // Freeway
-			else if (builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Addition
-		end
-		MACHINE_S3_PAL, MACHINE_S3_NTSC: begin
-			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
-			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
-			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
-			else if (builtin_padA[4] || builtin_padA[5]) begin builtin_profile <= MAP_NONE; builtin_sel <= 1'b1; end  // Blackjack
-		end
-		MACHINE_VISICOM: begin
-			if (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin
-				builtin_profile   <= MAP_VIS_ART; // Doodle
-				builtin_start_key <= 4'd1;
-				builtin_sel       <= 1'b1;
-			end
-			else if (builtin_padA[2]) begin
-				builtin_profile <= MAP_BOWLING; // Bowling
-				builtin_sel     <= 1'b1;
-			end
-			else if (builtin_padA[3]) begin
-				builtin_profile   <= MAP_VIS_ART; // Patterns
-				builtin_start_key <= 4'd3;
-				builtin_sel       <= 1'b1;
-			end
-			else if (builtin_padA[4]) begin
-				builtin_profile <= MAP_FREEWAY; // Freeway
-				builtin_sel     <= 1'b1;
-			end
-			else if (builtin_padA[7]) begin
-				builtin_profile <= MAP_NONE; // Addition
-				builtin_sel     <= 1'b1;
-			end
-		end
-		endcase
-	end
-end
-
-// ---- effective profile ------------------------------------------------------
-// Two independent OSD rows now: "Mapping" chooses between auto-detection and
-// the menu, and "Joystick" is the profile itself. There is no longer a magic
-// "0 = auto" value inside the profile enum, so every one of the 16 encodings --
-// MAP_NONE included -- is selectable, and the top level can display the
-// detected profile in the same row the user would edit (see Studio-II.sv).
-assign     auto_profile = chip8_active ? MAP_CHIP8 : (no_cart ? builtin_profile : map_profile);
-wire [3:0] profile      = joy_manual ? joy_override : auto_profile;
-
-// ---- profile -> keypad presses ---------------------------------------------
-// Each profile is two halves: the keys it lands on keypad A and on keypad B.
-// Which stick drives the B half is the Players setting. One player runs the
-// whole machine from stick 0 (Space War fires on pad A and steers on pad B);
-// two players get one stick per pad. Auto keeps each profile's natural
-// default, which is exactly the behaviour the joystick regression verified:
-// the asymmetric single-player profiles (Space War, Freeway, Bowling) act as
-// one-player, the symmetric ones (Cross, Baseball) as two.
-
-function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
-	reg [9:0] k;
-	begin
-		k = 10'd0;
-		case (prof)
-		MAP_CROSS: begin                     // the MPT-02 joystick layout
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;           // Extra
-		end
-		MAP_SPACEWAR:                        // fire
-			if (j[4]) k[2] = 1'b1;
-		MAP_FREEWAY: begin                   // throttle/brake
-			if (!machine_visicom) begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[4]) k[2] = 1'b1;   if (j[5]) k[0] = 1'b1;
-			end
-		end
-		MAP_BOWLING: begin                   // roll straight, or hook up/down
-			if (j[4]) k[5] = 1'b1;
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-		end
-		MAP_VIS_ART: ;                         // drawing and colour controls are on B
-		MAP_BASEBALL:                        // bat
-			if (j[4]) k[5] = 1'b1;
-		MAP_HOMEBREW: begin
-			// 8-way: a held diagonal is its corner key (Berzerk moves on
-			// 1/3/7/9), a cardinal is the cross. The corner keys are unused
-			// in the 4-way homebrews, so a passing diagonal is harmless.
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;            // up+left
-			4'b1001: k[3] = 1'b1;            // up+right
-			4'b0110: k[7] = 1'b1;            // down+left
-			4'b0101: k[9] = 1'b1;            // down+right
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-		end
-		MAP_HB2P: begin                      // own pad: cross + fire on 0
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[0] = 1'b1;
-		end
-		MAP_RACE: begin
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;
-			4'b1001: k[3] = 1'b1;
-			4'b0110: k[7] = 1'b1;
-			4'b0101: k[9] = 1'b1;
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[2] = 1'b1;           // accelerate independently
-		end
-		MAP_8WAY: begin                      // CROSS + 8-way diagonals: 1/3/7/9 on corners
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;            // up+left
-			4'b1001: k[3] = 1'b1;            // up+right
-			4'b0110: k[7] = 1'b1;            // down+left
-			4'b0101: k[9] = 1'b1;            // down+right
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
-		end
-		MAP_DOODLE: begin                   // Doodle/Patterns: B-side 8-way, single-player
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;            // up+left
-			4'b1001: k[3] = 1'b1;            // up+right
-			4'b0110: k[7] = 1'b1;            // down+left
-			4'b0101: k[9] = 1'b1;            // down+right
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
-		end
-		MAP_TENNIS: begin
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;   if (j[5]) k[0] = 1'b1;
-		end
-		MAP_CHIP8: begin                     // common WASD-shaped CHIP-8 cluster
-			if (j[3]) k[5] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[7] = 1'b1;   if (j[0]) k[9] = 1'b1;
-			if (j[5]) k[0] = 1'b1;           // Extra
-		end
-		MAP_CLIMB: begin
-			if (j[3]) k[2] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-		end
-		MAP_EXPLORER:
-			if (j[4]) k[0] = 1'b1;           // Fire
-		default: ;
-		endcase
-		map_padA = k;
-	end
-endfunction
-
-function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
-	reg [9:0] k;
-	begin
-		k = 10'd0;
-		case (prof)
-		MAP_CROSS: begin                     // the MPT-02 joystick layout
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;           // Extra
-		end
-		MAP_SPACEWAR: begin                  // steering
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-		end
-		MAP_FREEWAY: begin
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (machine_visicom) begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[4]) k[2] = 1'b1;           // accelerate independently
-				if (j[5]) k[5] = 1'b1;           // License B
-				if (j[6]) k[0] = 1'b1;           // License A
-			end
-			else if (j[6]) k[0] = 1'b1;       // Studio II normal
-		end
-		MAP_BOWLING: begin                   // active player rolls from either keypad
-			if (j[4]) k[5] = 1'b1;
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-		end
-		MAP_BASEBALL: begin                  // pitch
-			if (j[4]) k[5] = 1'b1;
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-		end
-		MAP_HOMEBREW: begin
-			// Fire is 0 on the right pad -- never A0, which restarts Invaders.
-			// The cross is repeated here because Pacman reads "down" on B8;
-			// pad B directions are unused in the other one-player homebrews.
-			if (j[4]) k[0] = 1'b1;
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-		end
-		MAP_HB2P: begin                      // own pad: cross + fire on 0
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[0] = 1'b1;
-		end
-		MAP_RACE: ;                         // all controls are on keypad A
-		MAP_VIS_ART: begin                   // movement draws; 5/0 select colour/state
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;
-			4'b1001: k[3] = 1'b1;
-			4'b0110: k[7] = 1'b1;
-			4'b0101: k[9] = 1'b1;
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[5] = 1'b1;           // next colour
-			if (j[5]) k[0] = 1'b1;           // previous colour / flashing
-		end
-		MAP_8WAY: begin                      // CROSS + 8-way diagonals: 1/3/7/9 on corners
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;            // up+left
-			4'b1001: k[3] = 1'b1;            // up+right
-			4'b0110: k[7] = 1'b1;            // down+left
-			4'b0101: k[9] = 1'b1;            // down+right
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
-		end
-		MAP_DOODLE: begin                   // Doodle/Patterns: B-side 8-way, single-player
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;            // up+left
-			4'b1001: k[3] = 1'b1;            // up+right
-			4'b0110: k[7] = 1'b1;            // down+left
-			4'b0101: k[9] = 1'b1;            // down+right
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[4]) k[5] = 1'b1;
-			if (j[5]) k[0] = 1'b1;
-		end
-		MAP_TENNIS: begin                    // movement, racket-size setup, and pause
-			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-			if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			if (j[4]) k[5] = 1'b1;   if (j[5]) k[0] = 1'b1;
-		end
-		MAP_CHIP8:                           // Fire = virtual F = physical B6
-			if (j[4]) k[6] = 1'b1;
-		MAP_CLIMB: begin
-			if (j[4]) k[1] = 1'b1;           // replay after game over
-			if (j[5] && j[1]) k[4] = 1'b1;  // Outbreak double-speed modifier
-			if (j[5] && j[0]) k[6] = 1'b1;
-		end
-		MAP_EXPLORER: begin
-			case (j[3:0])
-			4'b1010: k[1] = 1'b1;
-			4'b1001: k[3] = 1'b1;
-			4'b0110: k[7] = 1'b1;
-			4'b0101: k[9] = 1'b1;
-			default: begin
-				if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
-				if (j[1]) k[4] = 1'b1;   if (j[0]) k[6] = 1'b1;
-			end
-			endcase
-			if (j[5]) k[5] = 1'b1;           // lock target
-		end
-		default: ;
-		endcase
-		map_padB = k;
-	end
-endfunction
-
-wire profile_1p = (profile == MAP_SPACEWAR) || (profile == MAP_FREEWAY) ||
-	              (profile == MAP_BOWLING)  || (profile == MAP_NONE) ||
-	              (profile == MAP_HOMEBREW) || (profile == MAP_VIS_ART) ||
-                  (profile == MAP_8WAY)     || (profile == MAP_DOODLE) ||
-                  (profile == MAP_RACE)     || (profile == MAP_TENNIS) ||
-                  (profile == MAP_CHIP8)    || (profile == MAP_CLIMB) ||
-                  (profile == MAP_EXPLORER);
-wire one_player = (players == 2'd1) || ((players == 2'd0) && profile_1p);
-
-// Direct A0..A9/B0..B9 bindings and Start work from either stick: MiSTer maps
-// each input device independently, so a binding only exists where the user
-// made one. Start presses the cartridge's start key on keypad A when that key
-// is known, except for direct-start profiles.
-reg [9:0] directA, directB;
-integer dk;
-always @* begin
-	for (dk = 0; dk < 10; dk = dk + 1) begin
-		directA[dk] = joystick_0[8+dk]  | joystick_1[8+dk];
-		directB[dk] = joystick_0[18+dk] | joystick_1[18+dk];
-	end
-end
-wire       start_press = joystick_0[6] | joystick_1[6];
-wire [3:0] active_start_key = (profile == MAP_TENNIS) ? (one_player ? 4'd1 : 4'd2)
-	                         : ((profile == MAP_VIS_ART) && no_cart && builtin_sel) ? builtin_start_key
-	                         : (((profile == MAP_DOODLE) || (profile == MAP_CHIP8)) ? 4'd1
-	                                                                                 : start_key);
-wire       builtin_keypad_only = no_cart && builtin_sel && (builtin_profile == MAP_NONE);
-wire       start_enabled = (active_start_key < 4'd10) && (profile != MAP_FREEWAY) &&
-	                       (profile != MAP_EXPLORER) && !builtin_keypad_only;
-wire [9:0] start_keys       = (start_enabled && start_press) ? (10'd1 << active_start_key) : 10'd0;
-
-// Gunfighter/Tennis is B-only in Auto/1P and splits across A/B in 2P. 8WAY
-// follows the normal CROSS path (A-side in 1P).
-wire [9:0] joyA = ((profile == MAP_NONE) ? 10'd0
-	            : ((profile == MAP_TENNIS) && one_player) ? 10'd0
-	            : ((profile == MAP_DOODLE) ? 10'd0
-	                                      : map_padA(profile, joystick_0)));
-
-wire [9:0] joyB = ((profile == MAP_NONE) ? 10'd0
-	            : ((profile == MAP_DOODLE) ? map_padB(MAP_DOODLE, joystick_0)
-	                                      : (one_player ? map_padB(profile, joystick_0)
-	                                                    : map_padB(profile, joystick_1))));
-wire [9:0] joyA_active = joyA | directA | start_keys;
-wire [9:0] joyB_active = joyB | directB;
-
+`include "studio2_input_mapping.svh"
 ////////////////// CPU //////////////////////////////////////////////////////////////////
 
 // EF4=player B, EF3=player A, EF2 unused (high), EF1=1861 display status. Only keys 0-9 exist, so
@@ -1106,14 +178,6 @@ wire [7:0] cpu_din = 8'h00;
 reg  [7:0] cpu_dout;
 wire       Q;
 wire       unsupported;
-wire [2:0] io_n;
-wire       io_inp;
-wire       io_out;
-
-reg [15:0] cpu_ram_addr;
-reg  [7:0] cpu_ram_din;
-reg  [7:0] cpu_ram_dout;
-
 reg WAIT_N      = 1'b1;   // Clear=1, Wait=1 is Run.
 
 // ---- CPU machine-cycle enable -------------------------------------------------------------
@@ -1130,12 +194,6 @@ always @(posedge clk_sys) begin
 	else if (ce_pix) cpu_div <= cpu_div + 3'd1;
 end
 reg dma_in_req  = 1'b0;
-//reg dma_out_req = 1'b0;
-
-//wire TPA;
-//wire TPB;
-wire MWR_N;
-wire MRD_N;
 cdp1802 cdp1802 (
   .CLOCK        (clk_sys),
   .clk_enable   (cpu_ce),
@@ -1160,33 +218,11 @@ cdp1802 cdp1802 (
 
   .ram_rd       (ram_rd),       // O MRD_N
   .ram_wr       (ram_wr),       // O MWR_N
-  .ram_a        (ram_a),        // O cpu_ram_addr
+  .ram_a        (ram_a),        // O RAM address
   .ram_q        (ram_q),        // I DI
-  .ram_d        (ram_d)        // O cpu_ram_dout
+  .ram_d        (ram_d)        // O RAM write data
 
-  //.TPA          (TPA),          // O Timing Pulse  (RAM)
-  //.TPB          (TPB)           // O Timing Pulse  (IO)
 );
-/*
-cosmac cosmac (
-   .clk         (clk_sys),     // I
-   .clk_enable  (1'b1),        // I
-   .clear       (~reset),      // I
-   .dma_in_req  (dma_in_req),  // I
-   .dma_out_req (dma_out_req), // I
-   .int_req     (INT_N),       // I
-   .wait_req    (wait_req),    // I
-   .ef          (EF),          // I [4:1]
-   .data_in     (ram_q),       // I [7:0]
-   .data_out    (ram_d),       // O [7:0]
-   .address     (ram_a),       // O [15:0]
-   .mem_read    (ram_rd),      // O
-   .mem_write   (ram_wr),      // O
-   .io_port     (io_n),        // O [2:0]
-   .q_out       (Q),           // O
-   .sc          (SC)           // O [1:0]
-);
-*/
 
 ////////////////// MEMORY DECODE ////////////////////////////////////////////
 //
@@ -1210,15 +246,22 @@ wire  [7:0]  ram_d;  // CPU write data
 wire [15:0]  ram_a;  // CPU address
 wire  [7:0]  ram_q;  // data returned to the CPU (and to the 1861 during DMA)
 
-// Which of pages $08-$0F the loaded cartridge actually supplies. On the Studio
-// machines only $0A-$0F can be claimed; on the Visicom all eight bits gate its
-// cartridge window. Cleared when a new cartridge starts downloading;
-// deliberately not cleared on reset, since CLEAR does not unplug the cart.
-reg  [7:0]  cart_page = 8'h00;    // indexed by address bits [10:8]: page $08..$0F
+// Which of pages $00-$0F each machine's loaded cartridge actually supplies.
+// Cartridge data lives in four independent machine BRAMs, separate from
+// firmware. Page ownership therefore controls the overlay explicitly: a cart
+// may replace the normal $0400-$07FF firmware window, plus the cartridge
+// windows described below. CLEAR/reset does not unplug any resident cart.
+reg  [15:0] cart_page_s2      = 16'h0000;
+reg  [15:0] cart_page_s3_pal  = 16'h0000;
+reg  [15:0] cart_page_s3_ntsc = 16'h0000;
+reg  [15:0] cart_page_vis     = 16'h0000;
+wire [15:0] cart_page = (machine == MACHINE_STUDIO2) ? cart_page_s2
+                      : (machine == MACHINE_S3_PAL)  ? cart_page_s3_pal
+                      : (machine == MACHINE_S3_NTSC) ? cart_page_s3_ntsc
+                      :                                cart_page_vis;
 
 wire        bank0    = (ram_a[15:12] == 4'h0);
-wire        rom_sel  = bank0 && (!ram_a[11] ||
-	                   (machine_visicom && cart_page[ram_a[10:8]]));
+wire        rom_sel  = bank0 && !ram_a[11];
 // Studio III puts a second ROM region at $0C00-$0FFF -- MAME's mpt02_map has
 // .rom() there as well as at $0000-$07FF, and the BIOS is a 4K image covering
 // both. Marcel's interpreter needs the same window on Studio II while CHIP-8 is
@@ -1229,8 +272,11 @@ wire        rom_hi   = (is_studio3 || chip8_active) && bank0 &&
 // lines are decoded, which is why MAME names the storage ($0B00-$0B3F) and Emma 02
 // the window ($0B00-$0BFF) without disagreeing. See AGENTS.md for the unified-model rule.
 wire        col_sel  = is_studio3 && bank0 && (ram_a[11:8] == 4'hB);
-wire        cart_sel = bank0 && ram_a[11] && cart_page[ram_a[10:8]] &&
-	                   !rom_hi && !col_sel && !machine_visicom && !chip8_active;
+// Cartridge ownership is an overlay, not part of firmware storage. CHIP-8
+// deliberately wins over any native cartridge. Colour RAM also remains fixed
+// hardware on Studio III. Valid loaders never claim Studio RAM pages $08/$09.
+wire        cart_sel = bank0 && cart_page[ram_a[11:8]] &&
+	                   !col_sel && !chip8_active;
 
 // ---- Toshiba Visicom COM-100 ----------------------------------------------
 // A different map from either Studio, and the only one here that puts RAM above
@@ -1293,326 +339,24 @@ wire [2:0]  colour_dot = {colour_cell[0], colour_cell[2], colour_cell[1]};
 // delayed with the data. The CPU holds an address for a whole machine cycle
 // (32 clk_sys), so a registered select is settled long before it is sampled.
 wire [7:0]  rom_q;
+wire [7:0]  cart_q;
 wire [7:0]  sram_q;
 wire [7:0]  pl1_q;
-reg         rom_sel_q, ram_sel_q, pl1_sel_q;
+reg         rom_sel_q, cart_sel_q, ram_sel_q, pl1_sel_q;
 always @(posedge clk_sys) begin
-	rom_sel_q <= rom_sel | cart_sel | rom_hi;
-	ram_sel_q <= ram_sel;
-	pl1_sel_q <= vis_pl1;
+	rom_sel_q  <= rom_sel | rom_hi;
+	cart_sel_q <= cart_sel;
+	ram_sel_q  <= ram_sel;
+	pl1_sel_q  <= vis_pl1;
 end
 // Open bus reads back as $FF, matching MAME's unmap_value_high and the likely
 // floating-bus behaviour of the real machine (nothing drives the lines, and
-// the last DMA-driven byte was usually high). 
-assign ram_q = pl1_sel_q ? pl1_q
-             : ram_sel_q ? sram_q
-             : rom_sel_q ? rom_q : 8'hFF;
-
-
-////////////////// SOUND ////////////////////////////////////////////////////
-//
-// Behavioral model of the Q-gated NE555, fitted to the reference recordings in
-// docs/beeper-status.md. The internal contour holds near 628.4Hz for 20ms, then
-// descends to 505.2Hz; the output period is scaled as one curve for the selected
-// console tuning. Q low reverses pitch through the audible release while a faster
-// hidden control trajectory preserves the gap-dependent starts measured with
-// FLiP's Q-Sound Test. A fresh Q-high drive contour prevents retriggers from
-// accumulating pitch drop.
-localparam [15:0] SND_HALF_TOP    = 16'd1400;
-localparam [15:0] SND_HALF_BOTTOM = 16'd1741;
-localparam [15:0] SND_HOLD_TICKS  = 16'd35205; // ~20ms
-localparam [12:0] SND_RELEASE_STEP = 13'd600; // audible Q-low pitch recovery
-localparam [15:0] SND_RETRIGGER_SETTLE = 16'd10561; // ~6ms live-to-control glide
-localparam  [6:0] SND_RETRIGGER_TRACK_STEP = 7'd64;
-localparam [12:0] SND_ATTACK_STEP  = 13'd14;  // ~2ms zero-to-full
-localparam  [4:0] SND_DUTY_HIGH_PARTS = 5'd11;
-localparam  [4:0] SND_DUTY_PARTS      = 5'd17;
-localparam  [4:0] SND_DUTY_ROUND      = 5'd8;
-// Q14 full-period multipliers. Original is the December 1976 RCA demonstration
-// unit (0.9945 of the internal reference frequency). The three choices on
-// either side are one, three, and six cumulative reciprocal 31:32 steps.
-localparam [14:0] SND_TUNE_HIGHEST_Q14 = 15'd13617;
-localparam [14:0] SND_TUNE_HIGHER_Q14  = 15'd14978;
-localparam [14:0] SND_TUNE_HIGH_Q14    = 15'd15960;
-localparam [14:0] SND_TUNE_MEDIUM_Q14  = 15'd16475;
-localparam [14:0] SND_TUNE_LOW_Q14     = 15'd17006;
-localparam [14:0] SND_TUNE_LOWER_Q14   = 15'd18121;
-localparam [14:0] SND_TUNE_LOWEST_Q14  = 15'd19932;
-
-reg [15:0] snd_half;          // audible oscillator period
-reg [15:0] snd_drive_half;    // fresh Q-high contour
-reg [15:0] snd_control_half;  // recovered control state for a retrigger
-reg [15:0] snd_cnt;
-reg [15:0] snd_cycle_base;    // selected tick length shared by one high/low pair
-reg [14:0] snd_cycle_scale;   // tuning held for the same complete oscillator cycle
-reg [12:0] snd_curve_cnt;
-reg [15:0] snd_control_cnt;
-reg [15:0] snd_on_ticks;
-reg [12:0] snd_amp_cnt;
-reg  [6:0] snd_track_cnt;
-reg  [9:0] snd_eb_frac;
-reg  [7:0] snd_amp;
-reg        snd_q_prev;
-reg        snd_out;
-
-function automatic [14:0] snd_tune_period_scale(input [2:0] tuning);
-begin
-	case (tuning)
-		3'd1: snd_tune_period_scale = SND_TUNE_HIGH_Q14;
-		3'd2: snd_tune_period_scale = SND_TUNE_HIGHER_Q14;
-		3'd3: snd_tune_period_scale = SND_TUNE_HIGHEST_Q14;
-		3'd4: snd_tune_period_scale = SND_TUNE_LOWEST_Q14;
-		3'd5: snd_tune_period_scale = SND_TUNE_LOWER_Q14;
-		3'd6: snd_tune_period_scale = SND_TUNE_LOW_Q14;
-		default: snd_tune_period_scale = SND_TUNE_MEDIUM_Q14;
-	endcase
-end
-endfunction
-
-// Divider-only approximation of the rounded ~190ms driven descent.
-function automatic [12:0] snd_decay_interval(input [15:0] half_period);
-begin
-	if      (half_period < 16'd1443) snd_decay_interval = 13'd240;
-	else if (half_period < 16'd1486) snd_decay_interval = 13'd280;
-	else if (half_period < 16'd1529) snd_decay_interval = 13'd330;
-	else if (half_period < 16'd1572) snd_decay_interval = 13'd410;
-	else if (half_period < 16'd1615) snd_decay_interval = 13'd520;
-	else if (half_period < 16'd1657) snd_decay_interval = 13'd740;
-	else if (half_period < 16'd1699) snd_decay_interval = 13'd1600;
-	else if (half_period < 16'd1715) snd_decay_interval = 13'd2400;
-	else if (half_period < 16'd1727) snd_decay_interval = 13'd3400;
-	else if (half_period < 16'd1735) snd_decay_interval = 13'd4800;
-	else if (half_period < 16'd1740) snd_decay_interval = 13'd6800;
-	else                              snd_decay_interval = 13'd8191;
-end
-endfunction
-
-// Gap-dependent hidden recovery fitted to the controlled Q-Sound Test series.
-function automatic [15:0] snd_control_interval(input [15:0] half_period);
-begin
-	if      (half_period >= 16'd1474) snd_control_interval = 16'd435;
-	else if (half_period >= 16'd1445) snd_control_interval = 16'd2750;
-	else if (half_period >= 16'd1418) snd_control_interval = 16'd3600;
-	else if (half_period >= 16'd1410) snd_control_interval = 16'd9900;
-	else if (half_period >= 16'd1406) snd_control_interval = 16'd15000;
-	else if (half_period >= 16'd1404) snd_control_interval = 16'd25000;
-	else if (half_period >= 16'd1402) snd_control_interval = 16'd45000;
-	else                               snd_control_interval = 16'd65000;
-end
-endfunction
-
-// Divider-only RC envelope: ~21ms prominent decay and ~96ms total tail.
-function automatic [12:0] snd_release_interval(input [7:0] amplitude);
-begin
-	if      (amplitude >= 8'd192) snd_release_interval = 13'd170;
-	else if (amplitude >= 8'd128) snd_release_interval = 13'd240;
-	else if (amplitude >= 8'd64)  snd_release_interval = 13'd400;
-	else if (amplitude >= 8'd32)  snd_release_interval = 13'd800;
-	else if (amplitude >= 8'd16)  snd_release_interval = 13'd1600;
-	else if (amplitude >= 8'd8)   snd_release_interval = 13'd3200;
-	else                           snd_release_interval = 13'd5700;
-end
-endfunction
-
-// Fractional terminal count for the 628.4Hz plateau; curves use integer periods.
-wire [10:0] snd_eb_sum = {1'b0, snd_eb_frac} + 11'd574;
-wire        snd_eb_long = (snd_eb_sum >= 11'd1024);
-wire [15:0] snd_next_base = ((snd_half == SND_HALF_TOP) && !snd_eb_long)
-	                         ? 16'd1400 : snd_half + 16'd1;
-
-// Scale the complete period before splitting it into the measured 11:6 ratio.
-// Explicitly widened operands retain all Q14 product bits. Rounding once per
-// full period keeps the high and residual low phases on one common tuning.
-wire [16:0] snd_base_full_ticks = {snd_cycle_base, 1'b0};
-wire [31:0] snd_tune_product = ({15'd0, snd_base_full_ticks}
-	                            * {17'd0, snd_cycle_scale});
-wire [31:0] snd_tune_rounded = snd_tune_product + 32'd8192;
-wire [16:0] snd_full_ticks = snd_tune_rounded[30:14];
-wire [20:0] snd_high_scaled = ({4'd0, snd_full_ticks}
-	                           * {16'd0, SND_DUTY_HIGH_PARTS})
-	                           + {16'd0, SND_DUTY_ROUND};
-wire [20:0] snd_high_quotient = snd_high_scaled / {16'd0, SND_DUTY_PARTS};
-wire [16:0] snd_high_ticks = snd_high_quotient[16:0];
-wire [16:0] snd_phase_ticks = snd_out ? snd_high_ticks
-	                                  : snd_full_ticks - snd_high_ticks;
-wire [15:0] snd_toggle_at = snd_phase_ticks[15:0] - 16'd1;
-
-always @(posedge clk_sys) begin
-	if (reset) begin
-		snd_half       <= SND_HALF_TOP;
-		snd_drive_half <= SND_HALF_TOP;
-		snd_control_half <= SND_HALF_TOP;
-		snd_cnt        <= 16'd0;
-		snd_cycle_base <= 16'd1400;
-		snd_cycle_scale <= SND_TUNE_MEDIUM_Q14;
-		snd_curve_cnt  <= 13'd0;
-		snd_control_cnt <= 16'd0;
-		snd_on_ticks   <= 16'd0;
-		snd_amp_cnt    <= 13'd0;
-		snd_track_cnt  <= 7'd0;
-		snd_eb_frac    <= 10'd0;
-		snd_amp        <= 8'd0;
-		snd_q_prev     <= 1'b0;
-		snd_out        <= 1'b0;
-	end
-	else if (ce_pix) begin
-		snd_q_prev <= Q;
-
-		// Q edges establish the three continuous trajectories. The audible period
-		// never jumps at an edge; the control and fresh-drive contours determine
-		// where it moves afterward.
-		if (Q != snd_q_prev) begin
-			snd_amp_cnt <= 13'd0;
-			if (Q) begin
-				snd_on_ticks   <= 16'd0;
-				snd_curve_cnt  <= 13'd0;
-				snd_track_cnt  <= 7'd0;
-				snd_drive_half <= SND_HALF_TOP;
-			end
-			else begin
-				snd_on_ticks    <= 16'd0;
-				snd_track_cnt   <= 7'd0;
-				snd_control_half <= snd_half;
-				snd_control_cnt <= 16'd0;
-			end
-		end
-
-		if (!Q) begin
-			// The audible release follows the slower Outbreak/Pac-Man upward tail.
-			if (snd_half > SND_HALF_TOP) begin
-				if (snd_curve_cnt >= SND_RELEASE_STEP-1'b1) begin
-					snd_curve_cnt <= 13'd0;
-					snd_half <= snd_half - 1'b1;
-				end
-				else snd_curve_cnt <= snd_curve_cnt + 1'b1;
-			end
-			else snd_curve_cnt <= 13'd0;
-
-			// The hidden control recovers more quickly along the Gunfighter curve.
-			if (!snd_q_prev) begin
-				if (snd_control_half > SND_HALF_TOP) begin
-					if (snd_control_cnt >= snd_control_interval(snd_control_half)-1'b1) begin
-						snd_control_cnt <= 16'd0;
-						snd_control_half <= snd_control_half - 1'b1;
-					end
-					else snd_control_cnt <= snd_control_cnt + 1'b1;
-				end
-				else snd_control_cnt <= 16'd0;
-			end
-
-			// Q gates the envelope, not the oscillator, so the pitch remains continuous.
-			if (snd_amp != 8'd0) begin
-				if (!snd_q_prev && (snd_amp_cnt >= snd_release_interval(snd_amp)-1'b1)) begin
-					snd_amp_cnt <= 13'd0;
-					snd_amp <= snd_amp - 1'b1;
-				end
-				else if (!snd_q_prev) snd_amp_cnt <= snd_amp_cnt + 1'b1;
-			end
-			else begin
-				snd_amp_cnt <= 13'd0;
-				snd_out <= 1'b0;
-				// Once inaudible, keep the stopped oscillator with the recovered control.
-				snd_half <= snd_control_half;
-			end
-		end
-		else begin
-			if (snd_q_prev) begin
-				// For the first 6ms, glide to the gap-dependent recovered control state.
-				if (snd_on_ticks < SND_RETRIGGER_SETTLE) begin
-					if (snd_control_half > SND_HALF_TOP) begin
-						if (snd_control_cnt >= snd_control_interval(snd_control_half)-1'b1) begin
-							snd_control_cnt <= 16'd0;
-							snd_control_half <= snd_control_half - 1'b1;
-						end
-						else snd_control_cnt <= snd_control_cnt + 1'b1;
-					end
-					else snd_control_cnt <= 16'd0;
-
-					if (snd_half > snd_control_half) begin
-						if (snd_track_cnt >= SND_RETRIGGER_TRACK_STEP-1'b1) begin
-							snd_track_cnt <= 7'd0;
-							snd_half <= snd_half - 1'b1;
-						end
-						else snd_track_cnt <= snd_track_cnt + 1'b1;
-					end
-					else snd_track_cnt <= 7'd0;
-
-					if (snd_on_ticks >= SND_RETRIGGER_SETTLE-1'b1) begin
-						snd_track_cnt <= 7'd0;
-						snd_half <= snd_control_half;
-					end
-				end
-				else begin
-					snd_control_cnt <= 16'd0;
-					snd_track_cnt <= 7'd0;
-				end
-
-				// The same note-age counter defines the 20ms upper-pitch crest.
-				if (snd_on_ticks < SND_HOLD_TICKS) begin
-					snd_on_ticks <= snd_on_ticks + 1'b1;
-					snd_curve_cnt <= 13'd0;
-				end
-				else begin
-					if (snd_drive_half < SND_HALF_BOTTOM) begin
-						if (snd_curve_cnt >= snd_decay_interval(snd_drive_half)-1'b1) begin
-							snd_curve_cnt <= 13'd0;
-							snd_drive_half <= snd_drive_half + 1'b1;
-							if (snd_drive_half >= snd_half) begin
-								snd_half <= snd_drive_half + 1'b1;
-								snd_control_half <= snd_drive_half + 1'b1;
-								snd_control_cnt <= 16'd0;
-							end
-						end
-						else snd_curve_cnt <= snd_curve_cnt + 1'b1;
-					end
-					else begin
-						snd_drive_half <= SND_HALF_BOTTOM;
-						if (snd_half < SND_HALF_BOTTOM) begin
-							snd_half <= SND_HALF_BOTTOM;
-							snd_control_half <= SND_HALF_BOTTOM;
-						end
-						snd_curve_cnt <= 13'd0;
-					end
-				end
-			end
-
-			if (snd_q_prev && snd_amp < 8'hFF) begin
-				if (snd_amp_cnt >= SND_ATTACK_STEP-1'b1) begin
-					snd_amp_cnt <= 13'd0;
-					snd_amp <= snd_amp + 1'b1;
-				end
-				else snd_amp_cnt <= snd_amp_cnt + 1'b1;
-			end
-			else snd_amp_cnt <= 13'd0;
-		end
-
-		// Run one oscillator path for the driven sound and its fading release.
-		if (Q || (snd_amp != 8'd0)) begin
-			if (snd_cnt >= snd_toggle_at) begin
-				snd_cnt <= 16'd0;
-				snd_out <= ~snd_out;
-				// A low-to-high edge starts the next complete oscillator cycle.
-				// Select its base once so both phases use the same fractional period.
-				if (!snd_out) begin
-					snd_cycle_base <= snd_next_base;
-					snd_cycle_scale <= snd_tune_period_scale(beeper_tune);
-					if (snd_half == SND_HALF_TOP)
-						snd_eb_frac <= snd_eb_sum[9:0]; // modulo 1024
-					else
-						snd_eb_frac <= 10'd0;
-				end
-			end
-			else snd_cnt <= snd_cnt + 1'b1;
-		end
-	end
-end
-
-// Scale the 8-bit envelope by 24 (maximum 6120, close to the old +/-6000).
-// Production Studio III machines use the CDP1864's fixed-level tone instead.
-wire [13:0] snd_magnitude = ({6'd0, snd_amp} << 4) + ({6'd0, snd_amp} << 3);
-wire signed [15:0] snd_sample = snd_out ? $signed({2'b00, snd_magnitude})
-	                                   : -$signed({2'b00, snd_magnitude});
-assign audio = is_studio3 ? (aud_tone ? 16'sd6000 : -16'sd6000) : snd_sample;
+// the last DMA-driven byte was usually high). Cartridge data has priority over
+// firmware wherever the active machine's page mask says a cartridge is present.
+assign ram_q = pl1_sel_q  ? pl1_q
+             : ram_sel_q  ? sram_q
+             : cart_sel_q ? cart_q
+             : rom_sel_q  ? rom_q : 8'hFF;
 
 ////////////////// CARTRIDGE LOADER /////////////////////////////////////////
 //
@@ -1703,28 +447,60 @@ wire [11:0] ch8_a = (ioctl_addr < 25'h500)
 wire        ch8_we = ch8_dl && ioctl_wr && chip8_fw_loaded &&
 	                 !machine_visicom && (ioctl_addr < 25'h900);
 
-// On the Studio machines only pages $0A-$0F can be claimed; $08/$09 are RAM.
-// The Visicom uses the whole $08-$0F cartridge window. Do not count the first
-// three undecided magic bytes as raw data: at byte 3 the format is known, and a
-// real ST2 header must not make page $08 look supplied by its "RCA2" signature.
-wire        cart_claim = cart_a[11] && (machine_visicom || cart_a[10] || cart_a[9]);
+// Studio cartridges may claim $04-$07 and $0A-$0F; $08/$09 are RAM, and $0B
+// remains colour RAM on Studio III. Visicom cartridges use $08-$0F. Do not
+// count the first three undecided magic bytes as raw data: at byte 3 the format
+// is known, and a real ST2 header must not make a low page look supplied by its
+// "RCA2" signature.
+wire [3:0]  cart_pg = cart_a[11:8];
+wire        cart_claim = machine_visicom
+                       ? cart_pg[3]
+                       : ((cart_pg >= 4'h4) &&
+                          (cart_pg != 4'h8) && (cart_pg != 4'h9) &&
+                          !(is_studio3 && (cart_pg == 4'hB)));
 wire        raw_known  = (ioctl_addr > 25'd3) ||
 	                     ((ioctl_addr == 25'd3) && !((ioctl_dout == 8'h32) && st2_magic[2]));
 wire        cart_page_we = cart_we && cart_claim && (st2_mode || raw_known);
 
 always @(posedge clk_sys) begin
-	if (cart_dl && ioctl_wr && (ioctl_addr == 0)) cart_page <= 8'h00;   // new cartridge
-	if (cart_page_we)                             cart_page[cart_a[10:8]] <= 1'b1;
+	if (cart_dl && ioctl_wr && (ioctl_addr == 0)) begin
+		case (machine)
+			MACHINE_STUDIO2: cart_page_s2      <= 16'h0000;
+			MACHINE_S3_PAL:  cart_page_s3_pal  <= 16'h0000;
+			MACHINE_S3_NTSC: cart_page_s3_ntsc <= 16'h0000;
+			MACHINE_VISICOM: cart_page_vis     <= 16'h0000;
+		endcase
+	end
+
+	if (cart_page_we) begin
+		case (machine)
+			MACHINE_STUDIO2: cart_page_s2[cart_pg]      <= 1'b1;
+			MACHINE_S3_PAL:  cart_page_s3_pal[cart_pg]  <= 1'b1;
+			MACHINE_S3_NTSC: cart_page_s3_ntsc[cart_pg] <= 1'b1;
+			MACHINE_VISICOM: cart_page_vis[cart_pg]     <= 1'b1;
+		endcase
+	end
+
+	if (cart_unload) begin
+		case (machine)
+			MACHINE_STUDIO2: cart_page_s2      <= 16'h0000;
+			MACHINE_S3_PAL:  cart_page_s3_pal  <= 16'h0000;
+			MACHINE_S3_NTSC: cart_page_s3_ntsc <= 16'h0000;
+			MACHINE_VISICOM: cart_page_vis     <= 16'h0000;
+		endcase
+	end
 end
 
-// ---- Four native BIOS BRAMs plus the CHIP-8 interpreter ---------------------
+// ---- Native firmware, cartridge BRAMs, and CHIP-8 interpreter ---------------
 //
 // MiSTer auto-loads boot0.rom through boot3.rom with ioctl_index[5:0]==0 and
-// the slot in ioctl_index[7:6]. Each native BRAM only accepts writes for its
-// own slot. MiSTer Main can send the user-supplied chip8.bin automatically from
-// beside an F3 selection at supplemental index $0103, or the user can cache it
-// manually through F4 at index $0004. That universal Studio-family interpreter
-// goes into the fifth BRAM.
+// the slot in ioctl_index[7:6]. Each native firmware BRAM only accepts writes
+// for its own slot. Each machine also owns an independent cartridge BRAM, so
+// F1 can never overwrite resident firmware. MiSTer Main can send the
+// user-supplied chip8.bin automatically from beside an F3 selection at
+// supplemental index $0103, or the user can cache it manually through F4 at
+// index $0004. That universal Studio-family interpreter goes into the fifth
+// firmware/program BRAM.
 //
 // Mapping matches the OSD Machine row (status[14:13] / `machine`):
 //   0 Studio II        → boot0.rom
@@ -1737,34 +513,30 @@ end
 // ioctl_index[7:6] the way boot autoload does -- menu loads put the file's
 // extension index there, so a .rom would always land in slot 1.)
 //
-// Cartridge downloads (ioctl index 1) are written into the *currently
-// selected* machine's BRAM so the cart pages sit alongside that machine's
-// firmware. cart_page remains global.
+// Cartridge downloads (ioctl index 1) are written only into the *currently
+// selected* machine's cartridge BRAM. Cartridge page ownership is kept with
+// the same machine slot and determines where that BRAM overlays firmware/RAM.
 
 wire [1:0]  bios_slot = fw_dl ? machine : ioctl_index[7:6];
-wire [11:0] dl_a = ch8_dl ? ch8_a
-	              : ((bios_dl || chip8_fw_dl) ? ioctl_addr[11:0] : cart_a);
+wire [11:0] chip8_dl_a = ch8_dl ? ch8_a : ioctl_addr[11:0];
 
-// BIOS write: only the matching boot-slot BRAM
+// BIOS write: only the matching firmware BRAM
 wire        bios_we0 = bios_dl && ioctl_wr && (bios_slot == 2'd0);
 wire        bios_we1 = bios_dl && ioctl_wr && (bios_slot == 2'd1);
 wire        bios_we2 = bios_dl && ioctl_wr && (bios_slot == 2'd2);
 wire        bios_we3 = bios_dl && ioctl_wr && (bios_slot == 2'd3);
 wire        bios_we4 = chip8_fw_dl && ioctl_wr && (ioctl_addr < 25'h300);
 
-// Cart write: into the BRAM that belongs to the active machine
+// Cart write: only into the cartridge BRAM that belongs to the active machine
 wire        cart_we0 = cart_we && (machine == 2'd0);
 wire        cart_we1 = cart_we && (machine == 2'd1);
 wire        cart_we2 = cart_we && (machine == 2'd2);
 wire        cart_we3 = cart_we && (machine == 2'd3);
 
-wire        we0 = bios_we0 | cart_we0;
-wire        we1 = bios_we1 | cart_we1;
-wire        we2 = bios_we2 | cart_we2;
-wire        we3 = bios_we3 | cart_we3;
 wire        we4 = bios_we4 | ch8_we;
 
 wire [7:0]  rom0_q, rom1_q, rom2_q, rom3_q, rom4_q;
+wire [7:0]  cart0_q, cart1_q, cart2_q, cart3_q;
 
 // A truncated or absent cached interpreter must not accept a .ch8 file. A
 // valid interpreter is
@@ -1781,7 +553,11 @@ always @(posedge clk_sys) begin
 	if (!ioctl_download) chip8_write_seen <= 1'b0;
 	else if (ch8_we)     chip8_write_seen <= 1'b1;
 
-	if ((cart_dl || fw_dl || chip8_fw_dl) && !dl_d) chip8_loaded <= 1'b0;
+	// Unload removes the active game regardless of whether it came through the
+	// native cartridge path or CHIP-8. Keep chip8_fw_loaded intact so the cached
+	// interpreter remains available for the next .ch8 selection.
+	if (cart_unload) chip8_loaded <= 1'b0;
+	else if ((cart_dl || fw_dl || chip8_fw_dl) && !dl_d) chip8_loaded <= 1'b0;
 	else if (dl_done && chip8_write_seen) chip8_loaded <= 1'b1;
 end
 
@@ -1789,8 +565,8 @@ dpram #(8, 12) rom0
 (
 	.clock(clk_sys),
 	.ram_cs(1'b1),
-	.address_a(ioctl_download ? dl_a : ram_a[11:0]),
-	.wren_a(we0),
+	.address_a(bios_dl ? ioctl_addr[11:0] : ram_a[11:0]),
+	.wren_a(bios_we0),
 	.data_a(ioctl_dout),
 	.q_a(rom0_q),
 	.ram_cs_b(1'b0),
@@ -1804,8 +580,8 @@ dpram #(8, 12) rom1
 (
 	.clock(clk_sys),
 	.ram_cs(1'b1),
-	.address_a(ioctl_download ? dl_a : ram_a[11:0]),
-	.wren_a(we1),
+	.address_a(bios_dl ? ioctl_addr[11:0] : ram_a[11:0]),
+	.wren_a(bios_we1),
 	.data_a(ioctl_dout),
 	.q_a(rom1_q),
 	.ram_cs_b(1'b0),
@@ -1819,8 +595,8 @@ dpram #(8, 12) rom2
 (
 	.clock(clk_sys),
 	.ram_cs(1'b1),
-	.address_a(ioctl_download ? dl_a : ram_a[11:0]),
-	.wren_a(we2),
+	.address_a(bios_dl ? ioctl_addr[11:0] : ram_a[11:0]),
+	.wren_a(bios_we2),
 	.data_a(ioctl_dout),
 	.q_a(rom2_q),
 	.ram_cs_b(1'b0),
@@ -1834,8 +610,8 @@ dpram #(8, 12) rom3
 (
 	.clock(clk_sys),
 	.ram_cs(1'b1),
-	.address_a(ioctl_download ? dl_a : ram_a[11:0]),
-	.wren_a(we3),
+	.address_a(bios_dl ? ioctl_addr[11:0] : ram_a[11:0]),
+	.wren_a(bios_we3),
 	.data_a(ioctl_dout),
 	.q_a(rom3_q),
 	.ram_cs_b(1'b0),
@@ -1849,7 +625,7 @@ dpram #(8, 12) rom4
 (
 	.clock(clk_sys),
 	.ram_cs(1'b1),
-	.address_a(ioctl_download ? dl_a : ram_a[11:0]),
+	.address_a((ch8_dl || chip8_fw_dl) ? chip8_dl_a : ram_a[11:0]),
 	.wren_a(we4),
 	.data_a(ioctl_dout),
 	.q_a(rom4_q),
@@ -1860,12 +636,81 @@ dpram #(8, 12) rom4
 	.q_b()
 );
 
-// CPU (and DMA) reads the shared CHIP-8 image when active, otherwise the BRAM
-// belonging to the selected native machine. Visicom can never select rom4.
+// Four cartridge BRAMs are addressed independently from firmware. Old bytes
+// may remain physically present after replacement or unload, but are invisible
+// unless the corresponding active-machine cart_page bit is set.
+dpram #(8, 12) cart0
+(
+	.clock(clk_sys),
+	.ram_cs(1'b1),
+	.address_a(cart_dl ? cart_a : ram_a[11:0]),
+	.wren_a(cart_we0),
+	.data_a(ioctl_dout),
+	.q_a(cart0_q),
+	.ram_cs_b(1'b0),
+	.wren_b(1'b0),
+	.address_b(12'd0),
+	.data_b(),
+	.q_b()
+);
+
+dpram #(8, 12) cart1
+(
+	.clock(clk_sys),
+	.ram_cs(1'b1),
+	.address_a(cart_dl ? cart_a : ram_a[11:0]),
+	.wren_a(cart_we1),
+	.data_a(ioctl_dout),
+	.q_a(cart1_q),
+	.ram_cs_b(1'b0),
+	.wren_b(1'b0),
+	.address_b(12'd0),
+	.data_b(),
+	.q_b()
+);
+
+dpram #(8, 12) cart2
+(
+	.clock(clk_sys),
+	.ram_cs(1'b1),
+	.address_a(cart_dl ? cart_a : ram_a[11:0]),
+	.wren_a(cart_we2),
+	.data_a(ioctl_dout),
+	.q_a(cart2_q),
+	.ram_cs_b(1'b0),
+	.wren_b(1'b0),
+	.address_b(12'd0),
+	.data_b(),
+	.q_b()
+);
+
+dpram #(8, 12) cart3
+(
+	.clock(clk_sys),
+	.ram_cs(1'b1),
+	.address_a(cart_dl ? cart_a : ram_a[11:0]),
+	.wren_a(cart_we3),
+	.data_a(ioctl_dout),
+	.q_a(cart3_q),
+	.ram_cs_b(1'b0),
+	.wren_b(1'b0),
+	.address_b(12'd0),
+	.data_b(),
+	.q_b()
+);
+
+// CPU (and DMA) reads the shared CHIP-8 image when active, otherwise firmware
+// from the selected native machine. Visicom can never select rom4.
 assign rom_q = chip8_active ? rom4_q :
 	           (machine == 2'd0) ? rom0_q :
 	           (machine == 2'd1) ? rom1_q :
 	           (machine == 2'd2) ? rom2_q : rom3_q;
+
+// Cartridge reads always come from the selected native machine's independent
+// cartridge BRAM. cart_sel/cart_page decides whether this data is visible.
+assign cart_q = (machine == 2'd0) ? cart0_q :
+	            (machine == 2'd1) ? cart1_q :
+	            (machine == 2'd2) ? cart2_q : cart3_q;
 
 // The RAM: 512 bytes ($0800-$08FF program/system, $0900-$09FF display on the
 // Studio II and III; $1000-$11FF on the Visicom, whose bit plane 0 is its top
@@ -1941,5 +786,196 @@ dpram #(8, 8) sram2
 	.q_b()
 );
 
+////////////////// VIDEO //////////////////////////////////////////////////////////////////
+
+// SC is driven by the CPU's output port, so it must be a net -- declaring it a reg with an
+// initial value of 2'b10 meant the 1861 saw a constant "DMA" state code.
+wire [1:0]  SC;
+
+wire        INT;
+wire        DMAO;
+wire        EFx;
+
+
+pixie_video pixie_video (
+    // front end, CDP1802 bus clock domain
+    .clk        (clk_sys),    // I
+    .reset      (video_reset),             // I: soft resets keep raster timing alive
+
+    .clk_enable (ce_pix),     // I
+    .cpu_ce     (cpu_ce),     // I  CPU machine-cycle enable, for sampling DMA bytes
+
+    .SC         (SC),         // I [1:0]
+    // INP 1 turns the display on, OUT 1 turns it off (the BIOS enables it via CALL $0066). These
+    // interrupts from reset instead of from the moment the BIOS enabled it.
+    // The Visicom enables the display with OUT 1 rather than INP 1, and has no
+    // disable port at all -- Emma 02's config carries a single <out type="on">1
+    // where the Studio II carries <out>1 and <in>1, which its parser turns into
+    // PIXIE_OUT_OUT with only the enable populated.
+    .disp_on    (machine_visicom ? out1 : inp1),  // I
+    .disp_off   ((!machine_visicom && out1) || preserve_sync_reset),  // I: blank while preserving raster timing
+
+
+    .data_in    (ram_q),      // I [7:0]  byte the CPU delivers during a DMA-OUT cycle
+    .vis_mode   (machine_visicom),  // I
+    .data_in2   (pl1_q),      // I [7:0]  Visicom plane 1: the byte $200 higher
+    .colour_in  (colour_dot), // I  CDP1862 colour for that byte (NTSC Studio III)
+    .con        (colour_on),  // I
+    .bg_step    (out1 && !machine_visicom),  // I  OUT 1 steps the background
+
+    .DMAO       (DMAO_61),    // O
+    .INT        (INT_61),     // O
+    .EFx        (EFx_61),     // O
+
+    // back end, video clock domain
+    .video_clk  (clk_sys),    // I
+    .csync      (),           // O
+    .video      (video_dot),  // O  one bit: the 1861 is a monochrome part
+    .colour_out    (col61_dot),
+    .vis_index     (vis_index),
+    .bg_active     (col61_bg),
+    .bg_colour_out (col61_bgc),
+
+    .VSync      (VSync_61),   // O
+    .HSync      (HSync_61),   // O
+    .VBlank     (VBlank_61),  // O
+    .HBlank     (HBlank_61),  // O
+    .video_de   (de_61),      // O
+    .bitmap_de  (bde_61),     // O
+    .bitmap_hblank(bhb_61),
+    .bitmap_vblank(bvb_61)
+);
+
+// ---- CDP1864, the colour machines' video ---------------------------------
+// Both parts are instantiated and the active one selected, rather than making
+// one module's geometry runtime-switchable: the 1861's timing is delicately
+// tuned and documented as such, and both parts are tiny. See the header of
+// rtl/pixie/cdp1864.v.
+//
+// Note the different I/O decode. On the 1864 the display is turned off by INP 4,
+// not OUT 1 -- OUT 1 is taken over by the background colour step. The datasheet
+// gives the opcodes: 61 or 69 enable interrupt and DMA, 6C disables them.
+wire       DMAO_64, INT_64, EFx_64;
+wire       VSync_64, HSync_64, VBlank_64, HBlank_64, de_64, bde_64, bg_64;
+wire       bhb_64, bvb_64;
+wire [2:0] video_64;
+
+cdp1864 cdp1864
+(
+    .clk        (clk_sys),
+    .ce_pix     (ce_pix),
+    .cpu_ce     (cpu_ce),
+    .reset      (video_reset),
+
+    .SC         (SC),
+    .data_in    (ram_q),
+    .colour_in  (colour_dot),
+    .con        (colour_on),
+    .disp_on    (inp1),
+    .disp_off   (inp4 || preserve_sync_reset),
+    .bg_step    (out1),
+
+    .DMAO       (DMAO_64),
+    .INT        (INT_64),
+    .EFx        (EFx_64),
+
+    .csync      (),
+    .video      (video_64),
+    .bckgnd     (bg_64),
+    .VSync      (VSync_64),
+    .HSync      (HSync_64),
+    .VBlank     (VBlank_64),
+    .HBlank     (HBlank_64),
+    .video_de   (de_64),
+    .bitmap_de  (bde_64),
+    .bitmap_hblank(bhb_64),
+    .bitmap_vblank(bvb_64)
+);
+
+// ---- tone generator -------------------------------------------------------
+// The CDP1864 integrates this; the NTSC Studio III has it as a separate CDP1863
+// beside its 1861 and 1862. Same latch on OUT 4 and the same gate on Q either
+// way, differing only by one division stage -- so one instance serves both, with
+// div4 picking the chain. Straight from the datasheet's control-line truth table
+// and Weisbecker's Studio III notes ("64 instruction sets sound frequency
+// (inverse)", "Q gates sound output").
+wire aud_tone;
+cdp1863 cdp1863
+(
+    .clk     (clk_sys),
+    .cpu_ce  (cpu_ce),
+    .reset   (video_reset | (preserve_sync_reset & ~clear_key)),
+    // The 1864's integrated generator has an extra divide-by-4 that the
+    // standalone 1863 does not, so the same latch sounds four times higher on
+    // the NTSC machine. MAME: cdp1864 f = clk/8/4/(latch+1)/2 against cdp1863
+    // f = clk/8/(latch+1)/2 from its clock2 input, which is where TPB goes.
+    .div4    ((machine == MACHINE_S3_PAL) ||
+              ((machine == MACHINE_S3_NTSC) && ntsc_pal_pitch)),
+    .tone_we (out4),
+    .tone_d  (cpu_dout),
+    .aoe     (Q),
+    .aud     (aud_tone)
+);
+
+// ---- select ---------------------------------------------------------------
+// The Studio II's 1861 has no colour, so every channel follows its single dot
+// bit -- white on black, unchanged from before the video path widened.
+wire       video_dot;
+wire       DMAO_61, INT_61, EFx_61;
+wire       VSync_61, HSync_61, VBlank_61, HBlank_61, de_61, bde_61;
+wire       bhb_61, bvb_61;
+wire [2:0] col61_dot, col61_bgc;
+wire       col61_bg;
+wire [2:0] video_61;
+wire       bg_61;
+
+// The CDP1862 beside the 1861, fitted only on the NTSC Studio III. On a Studio II
+// `enable` is low and it passes the luminance bit straight through as white.
+cdp1862 cdp1862
+(
+    .enable     (machine == MACHINE_S3_NTSC),
+    .luminance  (video_dot),
+    .in_raster  (de_61),
+    .dot_colour (col61_dot),
+    .bg_active  (col61_bg),
+    .bg_colour  (col61_bgc),
+    .video      (video_61),
+    .bckgnd     (bg_61)
+);
+
+// The Visicom's four colours do not fit a 1-bit-per-channel bus, so the exact
+// palette is applied at the top level (Studio-II.sv) from vis_index. What
+// goes out here is the nearest 3-bit approximation, which is what the Verilator
+// harness captures -- the four colours stay distinguishable in a PNG or an
+// ASCII dump, which is all that side needs.
+reg  [2:0] vis_approx;
+always @(*) begin
+	case (vis_index)
+		2'd0:    vis_approx = 3'b010;   // background: dark green
+		2'd1:    vis_approx = 3'b011;   // cyan
+		2'd2:    vis_approx = 3'b110;   // yellow
+		default: vis_approx = 3'b100;   // red
+	endcase
+end
+
+assign video    = machine_visicom ? vis_approx : (machine_mpt02 ? video_64 : video_61);
+assign DMAO     = machine_mpt02 ? DMAO_64  : DMAO_61;
+assign INT      = machine_mpt02 ? INT_64   : INT_61;
+assign EFx      = machine_mpt02 ? EFx_64   : EFx_61;
+
+always @(*) begin
+	VSync    = machine_mpt02 ? VSync_64  : VSync_61;
+	HSync    = machine_mpt02 ? HSync_64  : HSync_61;
+	VBlank   = machine_mpt02 ? VBlank_64 : VBlank_61;
+	HBlank   = machine_mpt02 ? HBlank_64 : HBlank_61;
+	video_de = machine_mpt02 ? de_64     : de_61;
+	bitmap_de = machine_mpt02 ? bde_64   : bde_61;
+	bitmap_hblank = machine_mpt02 ? bhb_64 : bhb_61;
+	bitmap_vblank = machine_mpt02 ? bvb_64 : bvb_61;
+	video_bg  = machine_mpt02 ? bg_64    : bg_61;
+end
+
+////////////////// SOUND ////////////////////////////////////////////////////
+`include "studio2_beeper_inline.svh"
 
 endmodule
