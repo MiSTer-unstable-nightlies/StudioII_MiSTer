@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders." >&2
+exit 1
 # ---------------------------------------------------------------------------
 # The Studio III / Conic PAL score: every Conic cartridge, started with A1, and
 # diffed RTL against tools/refemu.

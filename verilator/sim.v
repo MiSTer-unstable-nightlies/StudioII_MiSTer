@@ -106,6 +106,7 @@ always @(posedge clk_48) begin
 end
 
 wire reset = ioctl_download | clear_key;
+reg cart_unload /*verilator public_flat_rw*/ = 0;
 
 wire key_strobe = old_keystb ^ ps2_key[10];
 reg old_keystb = 0;
@@ -115,6 +116,7 @@ rcastudioii rcastudio
 (
 	.clk_sys(clk_48),
 	.reset(reset),
+	.cart_unload(cart_unload),
 	// Match the FPGA top's original CLEAR carve-out: downloads restart video
 	// timing, while CLEAR resets the machine without interrupting raster sync.
 	.video_reset(ioctl_download),

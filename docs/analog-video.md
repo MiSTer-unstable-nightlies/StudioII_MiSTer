@@ -156,10 +156,11 @@ raster — that separation exists exactly so raster work is safe. After any chan
 
 ```sh
 cd verilator && make lint && rm -rf obj_dir_headless && make headless
-cd .. && tools/visicom-test.sh
+cd .. && python3 tools/game-start-sweep.py --run --machine visicom
 ```
 
-The legacy corpus scores are not acceptance tests. Inspect directed captures for
+The old `visicom-test.sh` corpus runner is disabled. The game-start sweep needs
+visual review and does not replace a directed video test. Inspect captures for
 the exact bitmap, DMA, raster, or palette property changed.
 
 ---

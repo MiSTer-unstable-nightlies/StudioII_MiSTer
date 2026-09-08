@@ -1,0 +1,314 @@
+{
+  "source": "Exact ST2 container hashes from the selected Fullset retail and Visicom folders. Identification is independent of filenames. Empty modes mean startup remains unverified.",
+  "machines": {
+    "studio2": "rom/studio2.rom",
+    "mpt02": "rom/studio3_pal.bin",
+    "studio3ntsc": "rom/studio3_ntsc.bin",
+    "visicom": "rom/visicom.rom"
+  },
+  "cartridges": [
+    {
+      "sha256": "3caec80f840b9cd6614743811366f5d9f0417d54f7b490881b92a7ce022e490e",
+      "crc32": "62ba6d60",
+      "size": 768,
+      "title": "A Cheap Graphics Computer",
+      "filename": "A Cheap Graphics Computer (Programming Cartridge) (USA) (1978) (Joseph Weisbecker).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "67858e22185de61a887e794fc4a1b64a59725fc0ddd25d08cc22ceb82d00a847",
+      "crc32": "5fd50b24",
+      "size": 1280,
+      "title": "Concentration + Match",
+      "filename": "Concentration + Match (Europe) (1978) (Richard Peterson).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "e11ae31ea6b669c00f5ea92dc886a447cec7b64bf61c2c3f36159d1c69ba4220",
+      "crc32": "1562464a",
+      "size": 2304,
+      "title": "Grand Pack",
+      "filename": "Grand Pack (Europe) (1978) (Joseph Weisbecker, Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "30a8463b1b2d3301bf5d356d45996292144ea768f3844999cead5e4416ff26b3",
+      "crc32": "593762bc",
+      "size": 1280,
+      "title": "Pinball",
+      "filename": "Pinball (Europe) (1978) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "cc4a2823ce3f731b364503f16b2ebfacacd8f1e0d1b9bd466f3f48c373302b25",
+      "crc32": "12b14c3d",
+      "size": 1280,
+      "title": "Speedway + Tag",
+      "filename": "Speedway + Tag (Europe) (1978) (Joyce Weisbecker).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "eefd1e2c19f436e6162ae20ecad4a4d00f989b2e426c02d6734766d1e14ab801",
+      "crc32": "dd54d36d",
+      "size": 1280,
+      "title": "Star Wars",
+      "filename": "Star Wars (Europe) (1978) (Gooitzen van der Wal).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "f9f6bd5ff552b5a996314aeea2dd76d44d11bbd7f3c4fa7e5b8569327df6bea7",
+      "crc32": "b4879a92",
+      "size": 768,
+      "title": "TV Arcade I - Space War",
+      "filename": "TV Arcade I - Space War (USA) (1977) (Joseph Weisbecker).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "b8d3371785c2fded68ca412eacdd6f3b1d1769494d6cfddc67aed109f7f93574",
+      "crc32": "ce21ed20",
+      "size": 768,
+      "title": "TV Arcade II - Fun with Numbers",
+      "filename": "TV Arcade II - Fun with Numbers (USA) (1977) (Phil Baltzer).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "74b455015462dfb1506b17ac2697973a9e7a341140bd984c833150672f78fb85",
+      "crc32": "a0f4180e",
+      "size": 768,
+      "title": "TV Arcade III - Tennis + Squash",
+      "filename": "TV Arcade III - Tennis + Squash (USA) (1977) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "9983d8b5058bfa18abca7f3b0891fd579644f9f6a7fd017c4a65cf80337ae84f",
+      "crc32": "e196c7fc",
+      "size": 1280,
+      "title": "TV Arcade IV - Baseball",
+      "filename": "TV Arcade IV - Baseball (USA) (1977) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "8d6c80a4fcb77f401c6cb2c8b2d76d60faaec0963e51b8be35e84cf8289b58de",
+      "crc32": "6b2d4685",
+      "size": 1280,
+      "title": "TV Arcade Series - Gunfighter + Moonship Battle",
+      "filename": "TV Arcade Series - Gunfighter + Moonship Battle (USA, Europe) (1977) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "581f91e08f848eff9209fbab0feefb41761c963c3564b335e8ec90c74d6a1fe9",
+      "crc32": "c7c904aa",
+      "size": 768,
+      "title": "TV Arcade Series - Speedway + Tag",
+      "filename": "TV Arcade Series - Speedway + Tag (USA) (1977) (Joyce Weisbecker).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "1d6c6eb51a23e40e2f0a357698aa8eb4d9d62072c0d5fe98d89476c3425b8dbf",
+      "crc32": "7d4adf90",
+      "size": 1280,
+      "title": "TV Casino Series - Blackjack",
+      "filename": "TV Casino Series - Blackjack (USA) (1977) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "9c9f114dc4ac27a24d63172bb317f5e32b3311fb60b780675c1fdd9b84dd6e96",
+      "crc32": "26d2f336",
+      "size": 1280,
+      "title": "TV Casino Series - TV Bingo",
+      "filename": "TV Casino Series - TV Bingo (USA, Europe) (1978) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "650c653ee83b317a8d9c372fb2d3ac508f4b616d3bc5b5931fd6b06627970b63",
+      "crc32": "93e2dd23",
+      "size": 1280,
+      "title": "TV Mystic Series - Biorhythm",
+      "filename": "TV Mystic Series - Biorhythm (USA, Europe) (1977) (Jef Winsor).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "86f5e38c31e3ee33a4dfa992422b0a4336c643fd1506f5d19417b3c77ab42def",
+      "crc32": "946c8092",
+      "size": 768,
+      "title": "TV School House I",
+      "filename": "TV School House I (USA) (1977) (Joyce Weisbecker).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "2f309ac541e3ce05b651b5097538a398628a538b6e9a3c48835462956b5f2169",
+      "crc32": "fcb47172",
+      "size": 1280,
+      "title": "TV School House II - Math Fun",
+      "filename": "TV School House II - Math Fun (USA, Europe) (1977) (Andrew Modla).st2",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "aed5a8de266f04dd905cb9d2beb7dba8b784568e4b6f9d01415813cbd660ed8d",
+      "crc32": "942407a0",
+      "size": 2304,
+      "title": "Gambler I",
+      "filename": "Gambler I (CAS-140) (Japan) (1978) (Andrew Modla).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "dd2bfbca45182bf838eb5ec6389198e7bff9b1643acb0665fed914fa34ab43a4",
+      "crc32": "b280d9e0",
+      "size": 2304,
+      "title": "Gambler II",
+      "filename": "Gambler II (CAS-141) (Japan) (1978) (unknown).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "a378d6bcbb6644bcf663e3ccfdbfb5bde45182b4ebc39cdd03dbac2c60e00e44",
+      "crc32": "cef222ac",
+      "size": 2304,
+      "title": "Reikan",
+      "filename": "Reikan (CAS-190) (Japan) (1978) (unknown, Jef Winsor).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "25c1fdaf478e78d28e87b7dfc9799551819bb13844dfa2bd04ce7820d67e5dd9",
+      "crc32": "ceb55198",
+      "size": 2304,
+      "title": "Sansuu Drill",
+      "filename": "Sansuu Drill (CAS-110) (Japan) (1978) (Andrew Modla, Philip Baltzer).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "b4945377ff4a3b0bb207a6f116c536c4d384650ed9bedd7f676ca70caa08cd9d",
+      "crc32": "227f6c23",
+      "size": 2304,
+      "title": "Space Command",
+      "filename": "Space Command (CAS-160) (Japan) (1978) (Jef Winsor).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    },
+    {
+      "sha256": "82f8151470154737052ae905c77c19814dc7759e9563f978e46a41a7577f3372",
+      "crc32": "377bfa19",
+      "size": 2304,
+      "title": "Sports Fan",
+      "filename": "Sports Fan (CAS-130) (Japan) (1978) (Andrew Modla, unknown).st2",
+      "machines": [
+        "visicom"
+      ],
+      "modes": {}
+    }
+  ],
+  "folders": [
+    {
+      "path": "software/RCA-Studio-II-Fullset/1 Studio II - MPT-02",
+      "machines": [
+        "studio2",
+        "mpt02",
+        "studio3ntsc"
+      ]
+    },
+    {
+      "path": "software/RCA-Studio-II-Fullset/1 Visicom COM-100",
+      "machines": [
+        "visicom"
+      ]
+    }
+  ]
+}

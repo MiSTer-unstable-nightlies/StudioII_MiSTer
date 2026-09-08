@@ -1,0 +1,51 @@
+RCA Studio II Bidirectional ST2/BIN Converter
+September 8, 2026
+Elle Ball
+
+This tool converts RCA Studio II cartridge files between .st2 and .bin formats.
+Windows-only. Python 3 must be installed and available on PATH.
+
+1. Drag and drop one or more .bin or .st2 files onto
+   bidirectional-st2-bin-converter.bat.
+2. The command prompt remains open so the conversion results can be reviewed.
+
+Raw BIN convention
+
+A raw .bin is an address-faithful image beginning at CPU address $0400:
+file offset $0000 corresponds to CPU address $0400.
+
+Sparse cartridge layouts are preserved with $FF padding. This matters for
+cartridges such as Grand Pack and Paul Robson's 1.5K games, whose upper ROM
+blocks are not contiguous with $0400-$07FF.
+
+Example:
+ST2 pages 04 05 06 07 0C 0D 0E 0F become a 3K BIN containing:
+  offset $000-$3FF -> CPU $0400-$07FF
+  offset $400-$7FF -> CPU $0800-$0BFF, padded with $FF
+  offset $800-$BFF -> CPU $0C00-$0FFF
+
+ST2 -> BIN
+
+* Validates the RCA2 header and block count.
+* Places each 256-byte ST2 block at the raw offset implied by its target page.
+* Fills holes with $FF instead of packing the blocks together.
+* Rejects duplicate target pages or pages below $0400.
+
+BIN -> ST2
+
+* Interprets the BIN as a raw address image beginning at $0400.
+* Pads a partial final 256-byte page with $FF.
+* Treats $0800-$09FF as Studio II RAM; non-$FF data there is rejected.
+* Omits redundant all-$FF pages at $0A00-$0BFF and $0E00-$0FFF, where an
+  unmapped Studio II reads $FF. This allows sparse ST2 layouts produced by the
+  converter to reconstruct their useful page map.
+* Includes $0C00-$0DFF when present because cartridge ROM may overlay the
+  normal RAM mirror there.
+* Writes a valid RCA2 header and page table.
+
+Round-trip note
+
+ST2 -> BIN -> ST2 preserves cartridge byte placement and can reproduce sparse
+page maps such as Grand Pack's. It is not metadata-lossless: a raw BIN does not
+contain the original ST2 title/author/header fields, and redundant all-$FF
+open-bus pages cannot be distinguished from padding.

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders." >&2
+exit 1
 # ---------------------------------------------------------------------------
 # Every Studio II case, driven with its *documented* start
 # sequence (from the RCA manuals, same sequences as tools/play-test.sh), and

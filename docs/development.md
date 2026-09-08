@@ -32,7 +32,7 @@ high-page diagnostics such as ST3CTA Tester 3 remain unsupported.
 `Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU, 
 memory maps, cartridge loader, keypad/controller mapping, and machine selection. 
 `rtl/audio/studio2_beeper.sv` contains the Studio II/Visicom NE555 beeper. The 
-CRC-to-profile database is included from `rtl/studio2_cart_profiles.sv`.
+CRC-to-profile database is included from `rtl/studio2_cart_profiles.svh`.
 
 The Studio II/Visicom NE555 pitch selector occupies `status[19:17]`. Codes 0--6
 are Original, High, Higher, Highest, Lowest, Lower, and Low; unused code 7
@@ -78,6 +78,20 @@ instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS
 boot ordering, Apply classification, OSD menu masking, or F1-F4 sync preservation.
 
 ## Video behavior
+
+Studio III NTSC uses `INP 1` for display enable and `OUT 1` for the CDP1862
+background step, with no software display-off port in
+[Emma 02's Studio III NTSC configuration](https://github.com/etxmato/emma_02/blob/master/data/Xml/StudioIII/standard-ntsc.xml).
+The Studio II `OUT 1` display-off decode must not apply to Studio III NTSC.
+PAL retains `INP 4` display-off; CLEAR/download blanking remains independent.
+
+The reported NTSC blackout after one player's Bowling frame and on selecting
+Blackjack (A4/A5) is consistent with the previous erroneous `OUT 1` disable.
+The decode is corrected, but the reported gameplay sequence still needs replay
+on MiSTer. Grand Pack's eight pages (`04-07`, `0C-0F`) exactly match those in
+`rom/studio3_ntsc.bin` (CRC16 `ED56`), so the cartridge and resident failures
+exercise identical game code. This is not evidence that every firmware variant
+is defective. Doodle/Patterns A1/A2 work in the user's report; A0 is unconfirmed.
 
 The normal output path is:
 
@@ -223,7 +237,100 @@ Canonical paths are `rom/` for firmware, `software/` for the corpus, `tools/refe
 
 Quartus commands are `tools/quartus-build.sh`, `tools/quartus-build.sh map`, and `tools/quartus-build.sh clean`. The script uses the amd64 Quartus 17 container with `--parallel=1`, which is required under Apple Silicon emulation. After RAM changes, inspect `output_files/Studio-II.map.rpt` for inferred `altsyncram` instances.
 
-Directed checks include `tools/memdecode-test.sh`, `tools/chip8-loader-test.sh`, `tools/visicom-loader-test.sh`, `tools/tone-test.sh`, `tools/visicom-test.sh`, and `tools/verify-beeper.sh`. The older corpus sweeps are diagnostics, not release gates.
+Directed checks include `tools/memdecode-test.sh`, `tools/chip8-loader-test.sh`, `tools/visicom-loader-test.sh`, `tools/tone-test.sh`, and `tools/verify-beeper.sh`. The old corpus runners (`score-21.sh`, `score-conic.sh`, `play-test.sh`, `probe-keys.sh`, `visicom-test.sh`, and `contact-sheet.py`) are disabled because they use obsolete dump paths. Use the game-start sweep below for game captures. Synthetic device/loader tests remain separate from game-start discovery.
+
+The focused input/display checks in `--loader-check` cover Pinball CRC selection,
+Grand Pack's PAL/NTSC menu selection and unload, Climber directions, and `OUT 1`
+display enable. After changing the included mapping files, explicitly rebuild:
+
+```sh
+make -C verilator -B headless
+verilator/obj_dir_headless/Vtop --bios rom/studio2.rom --loader-check --quiet
+```
+
+Expected result: `Loader and input checks: PASS (0 mismatches)`. These directed
+checks do not replace gameplay verification on MiSTer.
+
+## Game-start screenshot sweep
+
+`tools/game-start-sweep.py` accepts only `.st2` cartridges. The default folders
+are configured in `tools/game-starts.json`:
+
+- `software/RCA-Studio-II-Fullset/1 Studio II - MPT-02`
+- `software/RCA-Studio-II-Fullset/1 Visicom COM-100`
+
+No resident-only cases, raw dumps, archives, homebrew or other corpus folders
+are included by default. Repeat `--folder PATH` to replace the default folders
+with explicitly selected locations. Paths supplied on the command line are relative
+to the current directory; manifest folder and firmware paths are relative to the
+repository root. Missing folders are errors; there is no fallback to old dumps.
+Firmware remains in `rom/`. Retail images are probed on Studio II and both
+Studio III configurations; this is a compatibility probe, not a claim that
+all images support all three machines. Visicom images use Visicom only.
+By default every A key is tested independently from a fresh boot, plus no input.
+The database records full-container SHA-256, CRC32, size, canonical title and
+machine candidates for the 23 selected ST2 images. Matching uses the recorded
+SHA-256 directly; `filename` is descriptive metadata and is never opened or used
+as a lookup key. Renaming or moving a file preserves its mapping and case IDs.
+Unknown hashes remain exploratory; outside the configured machine folders they
+require an explicit `--machine`. Changed bytes never inherit a known mapping by name.
+Add sequences only after reviewing the exact images; identification alone does not
+verify startup. Until modes are recorded, `--sequences` produces no cases.
+Byte-identical images share cases.
+
+Run these from the repository root in the configured Verilator build shell:
+
+```sh
+# Inventory only; no build or simulation. Prints the new report directory.
+python3 tools/game-start-sweep.py
+
+# Build only when explicitly authorized; never use stale RTL output.
+make -C verilator -B headless
+
+# Small first capture; two fresh runs test repeatability.
+python3 tools/game-start-sweep.py --run --machine visicom --match "Sports Fan" --repeat 2
+
+# Replay manifest sequences explicitly; this does not discover start keys.
+python3 tools/game-start-sweep.py --run --sequences --repeat 2
+
+# Relocated corpus: folder names and game filenames do not determine identity.
+python3 tools/game-start-sweep.py --folder "/path/to/Visicom" --machine visicom
+
+# Explicit exploration: every A key from a fresh boot, plus no-input control.
+python3 tools/game-start-sweep.py --run --explore a --match "Space Command"
+```
+
+Use `--explore ab` for all twenty keys, `--machine visicom` to restrict machines,
+and `--limit 5` for a bounded sample.
+On Visicom, `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded;
+their screenshots do not demonstrate cartridge startup. Compare `A0` and `A5`
+as separate fresh-boot cases. Earlier Sumo `A0` then `A5` captures do not verify
+Sumo selection. A changed screen alone does not identify a game or mode.
+Each invocation preserves a new output directory with `index.html`, `coverage.json`,
+`results.json`, exact commands, logs and three screenshots per run. Inputs are raw
+keypad presses at frames 40, 90, 140, etc., held for 15 frames, with `--ce4` and
+manual profile 0. This checks software startup through the core, not gamepad
+automapping or the MiSTer top. Frames are machine-relative, not equal wall time
+between PAL and NTSC. Missing captures, timeouts and simulator failures are errors.
+
+After visually checking the gallery, explicitly approve selected case IDs:
+
+```sh
+python3 tools/game-start-sweep.py --approve out/REVIEWED_RUN --case CASE_ID
+```
+
+Approval requires two successful runs with identical pixels. Baselines live in
+`out/game-start-baselines.json` by default (`--baseline FILE` overrides it).
+Later runs report PASS/DIFF only against approved baselines; unapproved cases
+remain REVIEW, and differing repeat runs are NONDETERMINISTIC. Comparison hashes
+decoded RGB pixels and dimensions, not compressed PNG bytes. Case identity includes
+machine, exact firmware/cartridge hashes, key timing and capture settings, so changed
+inputs need fresh review. DIFF, NONDETERMINISTIC and ERROR return a nonzero exit code.
+Matching screenshots establish regression stability, not complete gameplay accuracy.
+
+`python3 -B tools/test-game-start-sweep.py` checks pixel comparison, approval gates
+and failure handling with synthetic images, plus folder restrictions and hash
+identity across renames and moves; it does not run Verilator.
 
 ## References and provenance
 

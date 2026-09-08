@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders." >&2
+exit 1
 # ---------------------------------------------------------------------------
 # Drive every documented start sequence through the RTL sim and report whether
 # the game reaches a live screen. Sequences come from the RCA manuals in docs/.

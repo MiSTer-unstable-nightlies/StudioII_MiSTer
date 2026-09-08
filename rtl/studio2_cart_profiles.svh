@@ -1,8 +1,8 @@
 // CRC16-CCITT cartridge profile database.
 //
 // Included inside resolve_cart_profile()'s case statement in
-// studio2_input_mapping.svh. Each case assigns local p/s outputs; unknown
-// cartridges fall back to 8-way in the resolver.
+// studio2_input_mapping.svh. Cases assign profile p, Start s and optional
+// normal-keypad b (1 = B). Unknown cartridges fall back to A-side 8-way.
 
 // TV Arcade I - Space War
 16'h45B5, 16'h977C:
@@ -15,12 +15,11 @@
 	end
 
 // Pinball
-// Per-player flippers are 4/6 and cabinet shove is 0, matching HB2P's
-// left/right + Fire-on-0 shape much better than the MPT-02 Cross profile.
 16'h92BA, 16'hD3E2:
 	begin
 
-		p = MAP_HB2P;
+		p = MAP_8WAY;
+		b = 1'b1;
 
 		s = 4'd1;
 
@@ -87,8 +86,15 @@
 
 	end
 
-// Game Pack / Grand Pack
-16'h1594, 16'h3505, 16'h74AB, 16'h815E,
+// Grand Pack: paged image, sharing the Studio III firmware menu.
+16'h1594:
+	begin
+		p = MAP_DOODLE;
+		s = START_S3_MENU;
+	end
+
+// Game Pack / raw and split pack images
+16'h3505, 16'h74AB, 16'h815E,
 16'hEF21, 16'hFC34, 16'hFC72:
 	begin
 
@@ -215,10 +221,26 @@
 
 	end
 
+// Blackjack, Gambler I and Fun with Numbers: one-player B, selection A1.
+16'h29B8, 16'hAF65, 16'hC8B4, 16'hCEC2, 16'h5433, 16'hB7A7:
+	begin
+		p = MAP_8WAY;
+		s = 4'd1;
+		b = 1'b1;
+	end
+
+// Biorhythm: dates on B, selection on A.
+16'h8CDE, 16'hDA69:
+	begin
+		p = MAP_8WAY;
+		s = 4'd0;
+		b = 1'b1;
+	end
+
 // Numeric/keypad-heavy software: neutral automatic fallback
-16'h0ECC, 16'h29B8, 16'h31AE, 16'h3731, 16'h7A43,
-16'h7D85, 16'h9D0D, 16'hAF65, 16'hB2FF, 16'hBBC8,
-16'hBD53, 16'hC8B4, 16'hCEC2, 16'hEE76:
+16'h0ECC, 16'h31AE, 16'h3731, 16'h7A43,
+16'h7D85, 16'h9D0D, 16'hB2FF, 16'hBBC8,
+16'hBD53, 16'hEE76:
 	begin
 
 		p = MAP_8WAY;
@@ -227,12 +249,20 @@
 
 	end
 
-// Biorhythm, Visicom Inspiration, Visicom Gambler, Sansu Drill,
+// Gambler II: default to Slot Machine 1; play on B, selection on A.
+16'h2F1A, 16'hF178:
+	begin
+		p = MAP_8WAY;
+		s = 4'd5;
+		b = 1'b1;
+	end
+
+// Visicom Inspiration, Sansuu Drill,
 // Space Command, and Q-Sound Test: neutral automatic fallback
-16'h12E8, 16'h2BC5, 16'h2F1A, 16'h5433, 16'h8CDE,
-16'h9BCF, 16'h9F6E, 16'hA7DF, 16'hB7A7, 16'hBF97,
-16'hC106, 16'hC7C6, 16'hDA69, 16'hDCFA, 16'hE4C4,
-16'hEBF4, 16'hF178:
+16'h12E8, 16'h2BC5,
+16'h9BCF, 16'h9F6E, 16'hA7DF, 16'hBF97,
+16'hC106, 16'hC7C6, 16'hDCFA, 16'hE4C4,
+16'hEBF4:
 	begin
 
 		p = MAP_8WAY;

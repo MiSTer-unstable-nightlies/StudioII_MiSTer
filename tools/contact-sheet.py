@@ -244,4 +244,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit("Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders.")

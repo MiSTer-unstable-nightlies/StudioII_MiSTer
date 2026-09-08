@@ -221,7 +221,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[6],Mapping,Auto,Manual;",
 	// Order must match localparams in rtl/rcastudioii.sv
-	"D2O[5:2],Joystick,None,Cross,Space War,Freeway,Bowling,Baseball,Homebrew,Visicom Art,8-way,Doodle,2P Homebrew,Race,Gunfighter/Tennis,CHIP-8,Climb/Outbreak,Space Explorer;",
+	"D2O[5:2],Joystick,None,Cross,Space War,Freeway,Bowling,Baseball,Homebrew,Visicom Art,8-way,Doodle,2P Homebrew,Race,Gunfighter/Tennis,CHIP-8,Climber/Outbreak,Space Explorer;",
 	"O[8:7],Players,Auto,1,2;",
 	"O[10:9],Numstick,Off,Pad A,Pad B;",
 	"-;",

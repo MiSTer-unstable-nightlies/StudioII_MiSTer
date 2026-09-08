@@ -1190,6 +1190,19 @@ int main(int argc, char** argv) {
                 failures++;
             }
 
+            if (c.profile == 8) {
+                top->players = 0;
+                top->joystick_0 = 1u << 4;
+                top->eval();
+                const bool pad_b = c.machine == 1 || c.machine == 2;
+                if ((unsigned)RS(joyA_active) != (pad_b ? 0u : 1u << 5) ||
+                    (unsigned)RS(joyB_active) != (pad_b ? 1u << 5 : 0u)) {
+                    printf("FAIL %s eight-way Auto keypad routing\n", c.name);
+                    failures++;
+                }
+                top->joystick_0 = 0;
+            }
+
             RS(playerA) = 1u << c.followup;
             clock_core();
             RS(playerA) = 0;
@@ -1346,26 +1359,105 @@ int main(int argc, char** argv) {
         expect_profile(7, (1u << 4) | (1u << 5) | (1u << 3) | (1u << 1),
                        0, (1u << 5) | (1u << 0) | (1u << 1),
                        "Visicom Art controls");
-        expect_profile(8, 1u << 4, 1u << 5, 1u << 5, "Flappy Fire");
-        expect_profile_players(12, 2, 1u << 6, 0, 1u << 2, 0,
+        expect_profile(8, 1u << 4, 1u << 5, 0, "Flappy Fire on A only");
+        expect_profile_players(12, 2, 1u << 6, 0, 1u << 1, 0,
                                "Gunfighter/Tennis two-player Start");
         expect_profile(11, (1u << 4) | (1u << 1), 0, (1u << 2) | (1u << 4),
                        "Race accelerate+left");
         expect_profile_players(12, 1, (1u << 3) | (1u << 4) | (1u << 5), 0,
-                               0, (1u << 2) | (1u << 5) | (1u << 0),
-                               "Squash one-player controls");
+                               (1u << 2) | (1u << 5) | (1u << 0),
+                               (1u << 2) | (1u << 5) | (1u << 0),
+                               "Gunfighter/Tennis one-controller mirror");
         expect_profile_players(12, 1, 1u << 6, 0, 1u << 1, 0,
                                "Squash one-player Start");
         expect_profile_players(12, 2, (1u << 3) | (1u << 4) | (1u << 5),
-                               (1u << 2) | (1u << 0) | (1u << 5),
+                               (1u << 2) | (1u << 5),
                                (1u << 2) | (1u << 5) | (1u << 0),
-                               (1u << 8) | (1u << 6) | (1u << 0),
+                               (1u << 8) | (1u << 0),
                                "Tennis two-player controls");
-        expect_profile_players(12, 2, 1u << 6, 0, 1u << 2, 0,
+        expect_profile_players(12, 2, 1u << 6, 0, 1u << 1, 0,
                                "Tennis two-player Start");
+        // Cover setup digits, Moonship diagonals and changes of routing.
+        const uint32_t tennis_inputs[] = {32u, 10u, 8u, 9u, 2u,
+                                         16u, 1u, 6u, 4u, 5u};
+        const unsigned tennis_modes[] = {0u, 1u, 2u, 1u, 0u};
+        for (unsigned mode : tennis_modes) {
+            for (unsigned digit = 0; digit < 10; digit++) {
+                const unsigned key = 1u << digit;
+                expect_profile_players(8, mode, tennis_inputs[digit], 0,
+                                       key, mode == 1 ? key : 0,
+                                       "Eight-way A digit routing");
+                expect_profile_players(8, mode, 0, tennis_inputs[digit],
+                                       0, mode == 2 ? key : 0,
+                                       "Eight-way second controller");
+            }
+        }
+        const unsigned saved_pad_b_s2 = RS(cart_pad_b_s2);
+        const unsigned saved_start_key = RS(start_key);
+        RS(cart_pad_b_s2) = 1;
+        for (unsigned mode : tennis_modes) {
+            for (unsigned digit = 0; digit < 10; digit++) {
+                const unsigned key = 1u << digit;
+                expect_profile_players(8, mode, tennis_inputs[digit], 0,
+                                       mode == 0 ? 0 : key, mode == 2 ? 0 : key,
+                                       "Eight-way B digit routing");
+                expect_profile_players(8, mode, 0, tennis_inputs[digit],
+                                       0, mode == 2 ? key : 0,
+                                       "Eight-way B second controller");
+            }
+            for (unsigned start : {0u, 1u, 5u, 15u}) {
+                RS(start_key) = start;
+                expect_profile_players(8, mode, 1u << 6, 0,
+                                       start < 10 ? 1u << start : 0u, 0,
+                                       "Eight-way B preserves configured Start on A");
+            }
+            expect_profile_players(8, mode, 1u << 11, 1u << 25,
+                                   1u << 3, 1u << 7,
+                                   "Eight-way direct keypads remain independent");
+        }
+        RS(cart_pad_b_s2) = saved_pad_b_s2;
+        RS(start_key) = saved_start_key;
+
+        const unsigned saved_crc = RS(cart_crc);
+        const unsigned b_side_crcs[] = {0x92ba, 0xd3e2, 0x29b8, 0xaf65,
+                                       0xc8b4, 0xcec2, 0x8cde, 0xda69,
+                                       0x2f1a, 0xf178, 0x5433, 0xb7a7};
+        for (unsigned crc : b_side_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            const unsigned start = crc == 0x8cde || crc == 0xda69 ? 0
+                                 : crc == 0x2f1a || crc == 0xf178 ? 5 : 1;
+            if ((unsigned)RS(resolved_cart_profile) != (0x180u | start)) {
+                printf("FAIL CRC %04X eight-way B metadata\n", crc);
+                failures++;
+            }
+        }
+        RS(cart_crc) = 0xffff;
+        top->eval();
+        if ((unsigned)RS(resolved_cart_profile) != 0x81u) {
+            printf("FAIL unknown CRC must default to eight-way A\n");
+            failures++;
+        }
+        RS(cart_crc) = saved_crc;
+        for (unsigned mode : tennis_modes) {
+            for (unsigned digit = 0; digit < 10; digit++) {
+                const unsigned key = 1u << digit;
+                expect_profile_players(12, mode, tennis_inputs[digit], 0,
+                                       mode == 0 ? 0 : key, mode == 2 ? 0 : key,
+                                       "Gunfighter/Tennis digit routing");
+                expect_profile_players(12, mode, 0, tennis_inputs[digit],
+                                       0, mode == 2 ? key : 0,
+                                       "Gunfighter/Tennis second controller");
+            }
+            expect_profile_players(12, mode, 1u << 6, 0, 1u << 1, 0,
+                                   "Gunfighter/Tennis stable Start");
+        }
         expect_profile(14, (1u << 5) | (1u << 1), 1u << 4, 1u << 4,
                        "Outbreak fast-left");
         expect_profile(14, 1u << 4, 0, 1u << 1, "Climber/Outbreak replay");
+        expect_profile(14, (1u << 3) | (1u << 1), 1u << 1, 0,
+                       "Climber eight-way diagonal");
+        expect_profile(14, 1u << 2, 1u << 8, 0, "Climber eight-way down");
         expect_profile(15, (1u << 4) | (1u << 5) | (1u << 3) | (1u << 1),
                        1u << 0, (1u << 1) | (1u << 5), "Space Explorer lock+fire");
 
@@ -1413,6 +1505,73 @@ int main(int argc, char** argv) {
             top->eval();
             top->clk_48 = 0;
             top->eval();
+        }
+
+        // Exact cartridge CRCs must resolve through the download-completion
+        // path, including Grand Pack's menu metadata in both machine slots.
+        top->joy_manual = 0;
+        top->joystick_0 = top->joystick_1 = 0;
+        top->players = 0;
+        for (unsigned m : {1u, 2u}) {
+            top->machine = m;
+            clock_core();
+            for (unsigned crc : {0x92bau, 0xd3e2u, 0x1594u}) {
+                RS(cart_crc) = crc;
+                RS(cart_dl_d) = 1;
+                clock_core();
+                top->rootp->top__DOT__clear_key = 1;
+                clock_core();
+                top->rootp->top__DOT__clear_key = 0;
+                top->eval();
+                if ((unsigned)RS(auto_profile) != (crc == 0x1594 ? 9u : 8u)) {
+                    printf("FAIL cartridge CRC %04X on machine %u selected profile %u\n",
+                           crc, m, (unsigned)RS(auto_profile));
+                    failures++;
+                }
+                if (crc != 0x1594) continue;
+                const unsigned remembered = RS(resident_profile);
+                for (unsigned key = 1; key <= 5; key++) {
+                    top->rootp->top__DOT__clear_key = 1;
+                    clock_core();
+                    top->rootp->top__DOT__clear_key = 0;
+                    RS(playerA) = 1u << key;
+                    clock_core();
+                    RS(playerA) = 1u << (key == 3 ? 1 : 3);
+                    clock_core();
+                    RS(playerA) = 0;
+                    top->eval();
+                    const unsigned want = key <= 2 ? 9u : key == 3 ? 4u : 8u;
+                    if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != want ||
+                        (unsigned)RS(resident_profile) != remembered) {
+                        printf("FAIL Grand Pack machine %u key %u: profile/selection/residency\n",
+                               m, key);
+                        failures++;
+                    }
+                }
+                top->rootp->top__DOT__cart_unload = 1;
+                clock_core();
+                top->rootp->top__DOT__cart_unload = 0;
+                top->eval();
+                if (!RS(no_cart) || (unsigned)RS(auto_profile) != remembered) {
+                    printf("FAIL Grand Pack unload did not restore resident mapping\n");
+                    failures++;
+                }
+            }
+        }
+
+        // OUT 1 changes the NTSC Studio III background without blanking the
+        // 1861. Studio II still disables video; Visicom enables it.
+        for (unsigned m : {0u, 2u, 3u}) {
+            top->machine = m;
+            CPU(IR) = 0x61;
+            CPU(state) = 2; // EXECUTE
+            PIX(display_enabled) = 1;
+            top->eval();
+            clock_core();
+            if ((bool)PIX(display_enabled) != (m != 0)) {
+                printf("FAIL OUT 1 display enable on machine %u\n", m);
+                failures++;
+            }
         }
 
         printf("Loader and input checks: %s (%d mismatch%s)\n", failures ? "FAIL" : "PASS",

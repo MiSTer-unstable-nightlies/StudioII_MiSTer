@@ -164,8 +164,8 @@ reg  [9:0] playerB = 10'h0;
 `include "studio2_input_mapping.svh"
 ////////////////// CPU //////////////////////////////////////////////////////////////////
 
-// EF4=player B, EF3=player A, EF2 unused (high), EF1=1861 display status. Only keys 0-9 exist, so
-// guard the index: keylatch 10-15 used to read off the end of the 10-bit playerA/playerB vectors.
+// EF4=B, EF3=A, EF2=unused (high), EF1=1861 display status.
+// The CD4515 outputs 10-15 have no keypad connection.
 wire  [3:0] EF;
 wire        key_valid = (keylatch < 4'd10);
 wire  [9:0] padA = playerA | joyA_active | osk_a;
@@ -806,14 +806,11 @@ pixie_video pixie_video (
     .cpu_ce     (cpu_ce),     // I  CPU machine-cycle enable, for sampling DMA bytes
 
     .SC         (SC),         // I [1:0]
-    // INP 1 turns the display on, OUT 1 turns it off (the BIOS enables it via CALL $0066). These
-    // interrupts from reset instead of from the moment the BIOS enabled it.
-    // The Visicom enables the display with OUT 1 rather than INP 1, and has no
-    // disable port at all -- Emma 02's config carries a single <out type="on">1
-    // where the Studio II carries <out>1 and <in>1, which its parser turns into
-    // PIXIE_OUT_OUT with only the enable populated.
+    // Emma 02 StudioIII/standard-ntsc.xml: INP 1 enables video; OUT 1
+    // steps the 1862 background only. Studio II alone disables on OUT 1.
+    // Visicom enables on OUT 1 and has no display-off port.
     .disp_on    (machine_visicom ? out1 : inp1),  // I
-    .disp_off   ((!machine_visicom && out1) || preserve_sync_reset),  // I: blank while preserving raster timing
+    .disp_off   (((machine == MACHINE_STUDIO2) && out1) || preserve_sync_reset),
 
 
     .data_in    (ram_q),      // I [7:0]  byte the CPU delivers during a DMA-OUT cycle

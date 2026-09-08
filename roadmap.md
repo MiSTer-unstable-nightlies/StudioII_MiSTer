@@ -15,6 +15,14 @@ technical documents; completed milestones belong in release notes and Git.
 
 ## Fidelity work
 
+### Studio III NTSC display control
+
+- Replay resident and Grand Pack Bowling through both players and multiple
+  frames after the `OUT 1` decode correction; test Blackjack A4/A5 from CLEAR.
+- Compare exact firmware bytes, display enable, PC, and DMA around any remaining
+  blackout before attributing it to firmware or changing timing. Record the
+  user's suspected A0 case separately; its behavior remains unconfirmed.
+
 ### Visicom video
 
 - Keep the evidence, current comparison, and future runtime-selection contract
@@ -45,13 +53,64 @@ technical documents; completed milestones belong in release notes and Git.
 
 ## Controller and keypad refinements
 
+### Near-term automapping cleanup
+
+Every game's profile must answer: **is this mapping better than stock 8-way?**
+Stock 8-way provides all ten keypad digits through directions, Fire and Extra;
+the consistent 1P routing below should make both pads accessible to one person.
+Audit existing profiles and classify each verified game in this order:
+
+1. **Stock 8-way:** use it whenever it covers setup and play adequately.
+2. **8-way with custom buttons:** retain all eight directions and change only
+   Fire/Extra/Start where that improves play. Check whether reassigned buttons
+   remove access to a digit needed during setup or play.
+3. **Custom control layout:** only when both eight-way options are demonstrably
+   worse. Group by verified control needs, sometimes a single game or an
+   author's shared layout. Freeway, Doodle and Robson's games are candidates;
+   each still needs to justify its exception.
+
+Record the concrete benefit over both simpler options for every custom profile.
+Account for keypad routing separately before creating a mapping variant, and
+consolidate games that need the same directions and button assignments. Evaluate
+renaming `Homebrew` to `Robson`: it represents Paul Robson's controls, not a
+generic homebrew layout; review `2P Homebrew` naming and coverage as well.
+
+- One-player Gunfighter is confirmed working. Complete the remaining
+  Tennis/Squash and Gunfighter/Moonship coverage: two-player Gunfighter, both
+  controllers, Moonship diagonals, Squash's B-side racquet choice, the A-side
+  ball-speed choices and routing changes during play.
+- Verify Race Colour v1/v2 controls separately from Race.
+- Audit Bowling/Baseball direction restrictions and alternating keypad roles;
+  assess Robson games individually for setup digits and cross-pad actions.
+- Keep Auto/1/2 for the initial cleanup, with consistent meanings: Auto uses
+  the title's normal layout; 1P gives one controller access to both keypads,
+  mirroring symmetric controls; 2P assigns controllers 1/2 to keypads A/B.
+  Preserve documented controls spanning both pads in asymmetric games.
+- Verify generic 8-way Auto's single-pad routing in play, including Pinball's
+  B-side controls and switching Players 1/2. Audit remaining fallback titles
+  for their normal keypad before treating their automatic mapping as complete.
+- Require a documented gameplay or setup reason for restricting directions;
+  specialized Fire/Extra assignments alone do not justify removing keypad
+  directions. Check complete setup sequences, including Tennis/Squash racquet
+  choices and A7/A8/A9 speed/start keys.
+- Reassess the Gunfighter/Tennis merge against actual play, including Moonship
+  Battle's eight directions. Identical current RTL outputs do not establish
+  that two games need identical mappings.
+- Verify normal play, one controller operating both sides, two controllers
+  independently operating their pads, and switching routing without changing
+  the selected game. Use these outcomes as regression expectations.
+- Consider clearer Normal/Mirror labels later; the immediate priority is
+  predictable behavior under the existing settings, not a menu redesign.
+
+### Other keypad refinements
+
 - Prevent the left analog stick from also generating ordinary profile movement
   while Numstick is using it to select `0`. Prefer automatic suppression while
   Numstick is active, unless an explicit left-stick option proves necessary.
-- Verify the physical MPT-02-family joystick directions from primary material
-  or hardware before describing them as equivalent to the neutral eight-way
-  fallback. The matching Visicom layout is documented; similarity alone is not
-  evidence for the MPT-02 family.
+- MPT-02 manuals confirm the optional joystick adaptor's `2/4/6/8` cardinals
+  for Speedway/Tag and Star Wars. Verify other titles and the Fire/Extra buttons
+  from primary material or hardware before generalizing that equivalence across
+  the machine family. The matching Visicom layout is documented separately.
 
 ## Keyboard and keypad options
 

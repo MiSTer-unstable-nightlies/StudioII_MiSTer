@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders." >&2
+exit 1
 # ---------------------------------------------------------------------------
 # Measure which keys each cartridge responds to, and emit the markdown table in
 # Readme.md. Uses the reference emulator (fast); the RTL sim gives the same

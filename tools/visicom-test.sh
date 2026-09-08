@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+echo "Retired: obsolete dump corpus. Use python3 tools/game-start-sweep.py with the approved Fullset ST2 folders." >&2
+exit 1
 # ---------------------------------------------------------------------------
 # Directed test for the Toshiba Visicom COM-100 (--machine visicom).
 #
@@ -29,7 +31,8 @@
 #
 # The start keys are Emma 02's own (Helpfiles/FaqVisicomBuiltInGames.htm and
 # FaqVisicomCartridges.htm): the built-ins are 1 Doodle, 2 Bowling, 3 Patterns,
-# 4 Freeway, 7 Addition, and every cartridge starts on 0.
+# 4 Freeway, 7 Addition. Cartridge checks sample A0 only; they do not establish
+# other mode selectors or complete cartridge startup coverage.
 # ---------------------------------------------------------------------------
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -78,7 +81,7 @@ check "Patterns (3)"  GR   --press a3@40:20
 check "Freeway  (4)"  CGRY --press a4@40:20
 check "Addition (7)"  CGY  --press a7@40:20
 
-echo "Visicom COM-100 cartridges (start on 0):"
+echo "Visicom COM-100 cartridges (A0 colour samples only):"
 CART_WANT=(
     "cas-110-arithmetic_drill        CGRY"
     "cas-130-sports_fan              CGRY"
