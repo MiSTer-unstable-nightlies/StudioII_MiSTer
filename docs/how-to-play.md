@@ -1,8 +1,6 @@
 # Master how-to-play and control reference
 
-This is the canonical gameplay and keypad reference for the RCA Studio II, Studio III / MPT-02 and Visicom COM-100 software supported by this core. It is intended both for players and as evidence for future CRC-based controller profiles.
-
-Game names follow the Fullset v12.1 filenames. Instructions are consolidated from original manuals, author readmes, Andrew Modla's emulator notes and Emma 02 help. Original manuals and author documentation take precedence when sources disagree. Unknown controls are identified as gaps rather than guessed.
+This is the gameplay and keypad reference for the RCA Studio II, Studio III / MPT-02 and Visicom COM-100 software supported by this core. Unknown controls are marked unverified rather than guessed.
 
 ## Contents
 
@@ -13,8 +11,6 @@ Game names follow the Fullset v12.1 filenames. Instructions are consolidated fro
 - [Studio III / MPT-02 programs](#studio-iii--mpt-02-programs)
 - [Studio II non-retail and homebrew software](#studio-ii-non-retail-and-homebrew-software)
 - [Visicom COM-100](#visicom-com-100)
-- [Known instruction gaps](#known-instruction-gaps)
-- [Source notes](#source-notes)
 
 ## Console keypad notation
 
@@ -158,7 +154,6 @@ The one-player Guess the Number game allows 20 guesses. In Reverse, reorder 1–
 - Each player uses `2/8` to move up/down and `5` to fire.
 - Tap `5` for one fast bullet; hold it for two slower bullets.
 - Two minutes; most hits wins.
-- One-player Gunfighter has been confirmed working with the current profile.
 
 **Moonship Battle — `A3`**
 
@@ -257,11 +252,6 @@ Studio II-compatible cartridges above also run on several MPT-02-family machines
 - Bowling follows the resident controls and lasts ten frames; a strike scores 20, a spare 15 and a perfect game 200. The automatic profile mirrors controller 1 onto A and B; select Players 2 to split them between two controllers.
 - In Blackjack, players can bet $01–$99; active-pad actions are `1` hit, `2` double and `0` stand.
 
-Use the paged `grand-pack.st2` image (CRC16 `1594`); its first A1-A5 selection
-chooses the same automatic profile as Studio III firmware. CLEAR permits a new
-selection. Raw and split dumps need the correct placement of both ROM regions;
-the merged raw file cannot be loaded correctly by the generic contiguous loader.
-
 ## Studio II non-retail and homebrew software
 
 ### Game Pack (Doodle, Curling, Pong, Addition, Freeway)
@@ -336,8 +326,7 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 
 ### Flappy Pixel
 
-- `A5` flaps. The existing 8-way profile maps Fire to `A5` and therefore
-  supplies the documented play control.
+- `A5` flaps.
 
 ### Kaboom
 
@@ -368,8 +357,6 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 
 - `B2` accelerates, `B4/B6` steer left/right and `B5` brakes. Confirmed in play.
 - Gamepad: Up/Fire accelerates, Left/Right steer, Down/Extra brakes, and Start sends B2.
-- Race Colour v1/v2 select the same profile; their controls still need
-  separate play verification.
 
 ### Rocket v1.01
 
@@ -391,39 +378,22 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 - `A4` Space Rescue: steer left/right with `A4/A6` and avoid asteroids.
 - `A5` Nim 1, last stone loses. `A6` Nim 2, last stone wins. Players remove 1–3 stones on their own pad; `0` resets game and scores.
 
-### Test and demonstration images
+### RCA Test Cartridge - Tester 1
 
-- **RCA Test Cartridge - Tester 1** is a 1976 diagnostic by Jack Wright; no player instructions are documented in the supplied notes.
-- **Demonstration Cartridge** is Andrew Modla's 1977 point-of-sale demonstration and is not documented as an interactive game.
-- The supplied **Studio III Point of Sale Demonstration** note says the original program is unavailable and a Studio II image was substituted.
-- The Joseph Weisbecker programming examples and other diagnostic/demo images need direct probing before controller profiles are assigned.
+- Load the cartridge and press CLEAR. The automatic system test takes about
+  30 seconds and ends at the keyboard test.
+- Press every key on keypad A, then every key on keypad B. Each displayed digit
+  changes to a checkerboard square when its key is pressed.
+- After all 20 keys are pressed, an alternating black-and-white `OK` display
+  indicates that the system and both keypads passed.
+- A digit left on the keyboard-test screen identifies a key that did not
+  register. Digits appearing in the center checkerboard before the keyboard
+  test indicate a system-memory failure.
+- Press CLEAR to restart the complete test.
 
 ## Visicom COM-100
 
-Select the Visicom machine and use its firmware. `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded. Test cartridge selectors independently after CLEAR; do not prefix them with `A0`. User observations suggest `A0` and `A5` select different modes on multiple cartridges; each image still needs verification.
-
-### Cartridge names
-
-Use ASCII-compatible Hepburn with Wapuro long vowels and loan words restored to
-their original-language spelling. Preserve all existing filename metadata.
-The [No-Intro convention dated 2007-10-30](https://datomatic.no-intro.org/stuff/The%20Official%20No-Intro%20Convention%20%2820071030%29.pdf)
-specifies ASCII titles and Hepburn; the project's explicit Wapuro and loan-word
-rules resolve details not specified in that edition's abbreviated section 2.2.
-
-| Serial | Japanese title | Canonical base title |
-|---|---|---|
-| CAS-110 | 算数ドリル | Sansuu Drill |
-| CAS-130 | スポーツファン | Sports Fan |
-| CAS-140 | ギャンブラーI | Gambler I |
-| CAS-141 | ギャンブラーII | Gambler II |
-| CAS-160 | スペースコマンド | Space Command |
-| CAS-190 | 霊感 | Reikan |
-
-Japanese title spellings agree with the local cartridge notes and
-[MAME's Visicom software list](https://github.com/mamedev/mame/blob/master/hash/visicom.xml).
-`Sansuu` retains the long vowel in さんすう; `Drill` restores ドリル.
-`Reikan` is the base title; Inspiration, Bagua and Biorhythm are descriptive
-aliases, not replacements for it. This title audit does not verify game controls.
+Select the Visicom machine and use its firmware. `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded. After CLEAR, select a cartridge game directly; do not prefix its selector with `A0`.
 
 ### Resident games
 
@@ -442,9 +412,7 @@ Studio II Freeway gamepad controls.
 
 ### Sports Fan (Baseball & Sumo Wrestling) (CAS-130)
 
-Controls below are translated from the original CAS-130 cartridge label
-supplied by the user. Both games are for two players; play verification of the
-core's profile remains pending.
+Both games are for two players.
 
 **Baseball**
 
@@ -465,10 +433,8 @@ core's profile remains pending.
 
 ### Gambler I — Blackjack (CAS-140)
 
-At the user's request, the recognized `.st2`/`.bin` images (CRC16
-`5433`/`B7A7`) use the RCA Blackjack manual's control scheme for Visicom
-play testing. These controls are verified for RCA Blackjack; the Visicom
-selection keys and behavior remain to be confirmed.
+**Unverified.** These controls match RCA Blackjack; the Visicom selection keys
+and behavior have not been confirmed.
 
 - CLEAR then `A1`: one player on B; CLEAR then `A2`: two players on A/B.
 - `0` cuts at CUT. At BET, `1`–`9` bet $1–$9 and `0` bets $10.
@@ -481,9 +447,7 @@ selection keys and behavior remain to be confirmed.
 
 ### Gambler II (CAS-141)
 
-The CAS-141 manual specifies the controls below. Recognized `.st2`/`.bin`
-images (CRC16 `2F1A`/`F178`) use `8-way` with B-side Auto and Start `A5`
-for Slot Machine 1. Core play verification remains pending.
+**Unverified.** Core play has not been confirmed.
 
 - `A5`: Slot Machine 1. It starts with 500 points and ends at zero or 1500.
   Bet 10-50 points with `B1`-`B5`, start the reels with `B0`, and hold `B5`
@@ -504,12 +468,8 @@ then direct `A0`; controllers 1/2 operate A/B independently. Start remains
 
 ### Reikan (CAS-190)
 
-Use direct A/B keypad bindings or Numstick: B enters numbers and choices,
-while A confirms or corrects them. The generic 8-way Auto fallback operates
-A only; no dedicated gamepad profile is provided.
-
-The manual specifies the selectors below; test them independently against the
-exact cartridge image. Numeric data is entered on B in two-digit groups. Press
+Keypad B enters numbers and choices; keypad A confirms or corrects them.
+Numeric data is entered on B in two-digit groups. Press
 `A5` after each group; before accepting a mistaken group, `A0` restarts it.
 Birth and target dates use `YY`, `MM`, `DD`, with only the final two digits of the Western
 year. The nine fortune categories are selected with `B1`-`B9`: mahjong,
@@ -524,52 +484,12 @@ alcohol, horse racing, love, money, travel, health, work and study.
 
 ### Space Command (CAS-160)
 
-- User observation: `A0` starts Vertical Intercept, the two-player game with
-  horizontal firing at a central target moving vertically.
-- User observation: `A5` starts Horizontal Intercept.
-- Intercept names describe target movement, not firing direction. Space War's
-  `A1` default is Horizontal Intercept, with vertical firing at horizontal targets;
-  Marcel's supplied instructions agree with the Space War selections above.
-- User reports the same controls as Space War, with a possible left/right
-  difference, and clarifies that holding `5` increases height, not `2`.
-  The applicable keypad and mode for this action are not yet recorded here.
-- The local cartridge text identifies the game as Space War but supplies no
-  key assignments. Reconcile the reported `5` action with the Space War
-  reference before assigning exact gameplay keys to a profile; do not copy
-  its `A2/B2` assignments into this entry as verified Visicom controls.
+**Unverified.**
 
-### Other dumped Visicom cartridges
+- `A5`: Horizontal Intercept, a single-player game.
+- `5` fires the missile. `4` and `6` steer left or right.
 
-These need independent start-key probing and do not have enough verified post-start controls for a reliable profile:
+- `A0`: Vertical Intercept, a two-player game.
+- Holding `5` increases missile height. 
 
-- Sansuu Drill (CAS-110)
-
-Do not infer their controls merely from similarly named Studio II cartridges; verify them by manual, trace or direct play first.
-
-## Known instruction gaps
-
-The Fullset v12.1 also contains software for which the supplied sources give no dependable gameplay instructions. These are explicit research items for future profile work:
-
-- Public-domain games: noshaders; complete start/restart behavior for Flappy
-  Pixel and Race.
-- Non-retail/prototype software: Baseball-2K, Basic Videomate, Biorhythm prototype, Color Demo, Color Runs, Colors Stars and Trek, Gunfight, New Studio 2-5 Game Set, Numbers, Paul's Printer, Print Snoopy, Secret Number, Space War (512 Bytes), ST3CTA Tester 3, Studio 2 Quiz, the Studio II-TV Tennis variants and Tag-Race.
-- Utility/firmware images: AM4KBAS, the Studio IV interpreter images, VIP firmware and the 40th Anniversary Multi-Cart.
-
-When filling a gap, record at minimum: exact Fullset filename and CRC, machine, initial selection sequence, A/B keypad usage, player count, every in-game action, restart/pause behavior and the source or hardware observation used.
-
-## Source notes
-
-- Original RCA cartridge manuals and standalone manual transcriptions supplied with the software.
-- The original RCA *Game Instruction Manual for Studio II and Studio III*,
-  Toshiba Visicom COM-100 manual, and Toshiba CAS-141/CAS-190 cartridge manuals
-  supplied with the project.
-- Paul Robson's author readmes for Asteroids, Berzerk, Combat, Hockey, Invaders, Kaboom, Pacman and Scramble.
-- Lee Romanow's author documentation for Climber, Fifteen Puzzle, Invasion, Outbreak, Rocket and TV Arcade 2012.
-- Azya52's Race source (`scanAccelKey`, `scanTurnKey`) and direct project
-  control testing for Flappy Pixel, Race, Pinball, Speedway and one-player
-  Gunfighter; initial play checks for Tennis/Squash.
-- Andrew Modla's `rca-studio2` data notes for Pinball, Space Explorer, the test cartridge and demonstration images.
-- Emma 02 how-to-play material for Studio II, MPT-02 and Visicom resident/cartridge software.
-- AtariAge user etxmato's documented controls for Visicom Inspiration.
-
-Treat this file as a control-research reference, not proof that a current automatic profile is complete. CRC mappings in RTL must still use hashes of the exact distributed files.
+- Controls *should* match TV Arcade I - Space War.
