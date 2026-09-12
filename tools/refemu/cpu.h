@@ -16,8 +16,7 @@
 
 //  Which machine is being emulated. The Studio II is the CDP1861 original; MPT02
 //  covers the CDP1864 colour family (Soundic Victory MPT-02 and its Hanimex,
-//  Mustang, Sheen, Academy and Trevi badges, and Studio III). See
-//  docs/succession-plan.md §6 for where the numbers come from.
+//  Mustang, Sheen, Academy and Trevi badges, and Studio III).
 #define MACHINE_STUDIO2 (0)
 #define MACHINE_MPT02   (1)
 

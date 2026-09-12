@@ -1,4 +1,4 @@
-# Master how-to-play and control reference
+# How to play
 
 This is the gameplay and keypad reference for the RCA Studio II, Studio III / MPT-02 and Visicom COM-100 software supported by this core. Unknown controls are marked unverified rather than guessed.
 
@@ -23,7 +23,7 @@ The machines have two ten-key pads, identified here as **A** and **B**. `A5` mea
   0
 ```
 
-Many games treat `2/4/6/8` as up/left/right/down and `1/3/7/9` as diagonals. This document names the console keys directly; references to PC arrow keys, Space, Tab, W/A/S/Z or a numeric keypad in emulator documentation have been translated back to A/B keypad positions where the relationship is known.
+Most games treat `2/4/6/8` as up/left/right/down, with some also including `1/3/7/9` as diagonals. This document names the console keys directly; references to PC arrow keys, Space, Tab, W/A/S/Z or a numeric keypad in emulator documentation have been translated back to A/B keypad positions where the relationship is known.
 
 `CLEAR` means the console CLEAR button, available from F3, the OSD or gamepad Select in this core. Unless an entry says otherwise, press CLEAR before selecting or restarting a program.
 
@@ -35,13 +35,18 @@ interpreter found beside the selected program. You can instead use **Load
 CHIP-8 Interpreter** once per core session; the cached copy then serves `.ch8`
 programs in any directory. Loading the interpreter alone leaves the native
 machine active, and the next **Load CHIP-8** selection enters CHIP-8 mode.
-Virtual CHIP-8 keys `0`–`9` map to keypad A
-`0`–`9`; `A`–`F` map to keypad B `1`–`6`. Their keyboard equivalents are:
+While a CHIP-8 program is loaded, the MiSTer keyboard uses the standard CHIP-8
+QWERTY layout:
 
 ```text
-CHIP-8: 0 1 2 3 4 5 6 7 8 9  A B C D E F
-Key:    X 1 2 3 Q W E A S D  7 8 9 U I O
+Key:     1 2 3 4    CHIP-8:  1 2 3 C
+         Q W E R             4 5 6 D
+         A S D F             7 8 9 E
+         Z X C V             A 0 B F
 ```
+
+Direct keypad bindings and Numstick continue to map virtual CHIP-8 keys `0`–`9`
+to keypad A `0`–`9` and `A`–`F` to keypad B `1`–`6`.
 
 There is no universal gamepad layout for CHIP-8 software. Use the keyboard,
 direct A/B keypad bindings, Numstick, or select a manual profile appropriate to
@@ -355,7 +360,7 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 
 ### Race
 
-- `B2` accelerates, `B4/B6` steer left/right and `B5` brakes. Confirmed in play.
+- `B2` accelerates, `B4/B6` steer left/right and `B5` brakes.
 - Gamepad: Up/Fire accelerates, Left/Right steer, Down/Extra brakes, and Start sends B2.
 
 ### Rocket v1.01
@@ -392,6 +397,12 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 - Press CLEAR to restart the complete test.
 
 ## Visicom COM-100
+
+Maintainer hardware testing on 2026-09-08 confirms all Visicom games are playable
+with the existing control schemes on the current build. This is overall
+playability confirmation; individual keypad details still marked unverified
+below need specific confirmation, and exact-image automated startup baselines
+have not been established by this report.
 
 Select the Visicom machine and use its firmware. `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded. After CLEAR, select a cartridge game directly; do not prefix its selector with `A0`.
 
@@ -447,7 +458,7 @@ and behavior have not been confirmed.
 
 ### Gambler II (CAS-141)
 
-**Unverified.** Core play has not been confirmed.
+Individual keypad sequences below have not been separately verified.
 
 - `A5`: Slot Machine 1. It starts with 500 points and ends at zero or 1500.
   Bet 10-50 points with `B1`-`B5`, start the reels with `B0`, and hold `B5`
@@ -490,6 +501,6 @@ alcohol, horse racing, love, money, travel, health, work and study.
 - `5` fires the missile. `4` and `6` steer left or right.
 
 - `A0`: Vertical Intercept, a two-player game.
-- Holding `5` increases missile height. 
+- Holding `5` increases missile height.
 
 - Controls *should* match TV Arcade I - Space War.

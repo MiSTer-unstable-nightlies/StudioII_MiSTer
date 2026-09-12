@@ -8,19 +8,19 @@
 
 // Profile IDs must match the OSD list in Studio-II.sv.
 localparam [3:0] MAP_NONE       = 4'd0;   // no controller mapping; keep keypad/OSK input only
-localparam [3:0] MAP_CROSS      = 4'd1;   // 2/8/4/6 + 5 fire, both pads
+localparam [3:0] MAP_4WAY       = 4'd1;   // 2/8/4/6 + 5 fire, both pads
 localparam [3:0] MAP_SPACEWAR   = 4'd2;   // fire A2, steer B4/B6
 localparam [3:0] MAP_FREEWAY    = 4'd3;   // Studio II uses A for speed and B to steer;
                                           // Visicom puts every control on B
 localparam [3:0] MAP_BOWLING    = 4'd4;   // roll 5, hook 2/8 on the active A/B pad
 localparam [3:0] MAP_BASEBALL   = 4'd5;   // bat A5; pitch B5 straight, B2/B8 curve
-localparam [3:0] MAP_HOMEBREW   = 4'd6;   // Paul Robson's 1P games: 8-way on pad A
+localparam [3:0] MAP_ROBSON     = 4'd6;   // Paul Robson's 1P games: 8-way on pad A
                                           // (diagonals are keys 1/3/7/9), fire B0
 localparam [3:0] MAP_VIS_ART    = 4'd7;   // Visicom Doodle/Patterns: directions B,
 	                                          // Fire B5, Extra B0
-localparam [3:0] MAP_8WAY       = 4'd8;   // CROSS plus diagonals: 1/3/7/9, fire 5 + extra 0
-localparam [3:0] MAP_DOODLE     = 4'd9;   // Doodle/Patterns: B-side 8-way, fire 5, extra 0
-localparam [3:0] MAP_HB2P       = 4'd10;  // Hockey/Combat: cross and fire 0 on each pad
+localparam [3:0] MAP_8WAY       = 4'd8;   // 4-way plus diagonals: 1/3/7/9, fire 5 + extra 0
+localparam [3:0] MAP_ART        = 4'd9;   // Doodle/Patterns: B-side 8-way, fire 5, extra 0
+localparam [3:0] MAP_ROBSON2P   = 4'd10;  // Hockey/Combat: 4-way and fire 0 on each pad
 localparam [3:0] MAP_RACE       = 4'd11;  // Race: keypad B steering on 4/6,
                                           // accelerate 2, brake 5
 localparam [3:0] MAP_TENNIS     = 4'd12;  // 8-way: Auto uses B, 1P mirrors A/B,
@@ -243,21 +243,21 @@ always @(posedge clk_sys) begin
 	if (reset || (cart_unload && cart_s3_menu)) begin
 		// Re-arm selection while retaining the remembered resident mapping.
 		builtin_sel       <= 1'b0;
-		builtin_profile   <= (cart_s3_menu && !cart_unload) ? MAP_DOODLE : resident_profile;
+		builtin_profile   <= (cart_s3_menu && !cart_unload) ? MAP_ART : resident_profile;
 		builtin_start_key <= (cart_s3_menu && !cart_unload) ? 4'd1 : resident_start_key;
 	end
 	else if (firmware_menu && !builtin_sel) begin
 		case (machine)
 		MACHINE_STUDIO2: begin
-			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
-			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
+			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_ART; builtin_sel <= 1'b1; end  // Doodle
+			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_ART; builtin_sel <= 1'b1; end  // Patterns
 			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
 			else if (builtin_padA[4]) begin builtin_profile <= MAP_FREEWAY; builtin_sel <= 1'b1; end  // Freeway
 			else if (builtin_padA[5]) begin builtin_profile <= MAP_8WAY; builtin_sel <= 1'b1; end  // Addition
 		end
 		MACHINE_S3_PAL, MACHINE_S3_NTSC: begin
-			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Doodle
-			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_DOODLE; builtin_sel <= 1'b1; end  // Patterns
+			if      (builtin_padA[1] || (builtin_start_press && (active_start_key == 4'd1))) begin builtin_profile <= MAP_ART; builtin_sel <= 1'b1; end  // Doodle
+			else if (builtin_padA[2] || (builtin_start_press && (active_start_key == 4'd2))) begin builtin_profile <= MAP_ART; builtin_sel <= 1'b1; end  // Patterns
 			else if (builtin_padA[3]) begin builtin_profile <= MAP_BOWLING; builtin_sel <= 1'b1; end  // Bowling
 			else if (builtin_padA[4] || builtin_padA[5]) begin // Blackjack
 				builtin_profile   <= MAP_8WAY;
@@ -353,7 +353,7 @@ wire [3:0] profile      = joy_manual ? joy_override : auto_profile;
 // ---- profile -> keypad presses ---------------------------------------------
 // A/B masks describe keypad actions; Players controls their joystick sources.
 
-function automatic [9:0] map_cross(input [31:0] j);
+function automatic [9:0] map_4way(input [31:0] j);
 	reg [9:0] k;
 	begin
 		k = 10'd0;
@@ -361,7 +361,7 @@ function automatic [9:0] map_cross(input [31:0] j);
 		if (j[2]) k[8] = 1'b1;
 		if (j[1]) k[4] = 1'b1;
 		if (j[0]) k[6] = 1'b1;
-		map_cross = k;
+		map_4way = k;
 	end
 endfunction
 
@@ -373,7 +373,7 @@ function automatic [9:0] map_8way(input [31:0] j);
 		4'b1001: begin k = 10'd0; k[3] = 1'b1; end // up+right
 		4'b0110: begin k = 10'd0; k[7] = 1'b1; end // down+left
 		4'b0101: begin k = 10'd0; k[9] = 1'b1; end // down+right
-		default:  k = map_cross(j);
+		default:  k = map_4way(j);
 		endcase
 		map_8way = k;
 	end
@@ -384,8 +384,8 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 	begin
 		k = 10'd0;
 		case (prof)
-		MAP_CROSS: begin
-			k = map_cross(j);
+		MAP_4WAY: begin
+			k = map_4way(j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;           // Extra
 		end
@@ -404,12 +404,12 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 		MAP_VIS_ART: ;                         // drawing and colour controls are on B
 		MAP_BASEBALL:                        // bat
 			if (j[4]) k[5] = 1'b1;
-		MAP_HOMEBREW: begin
+		MAP_ROBSON: begin
 			// Berzerk uses the corner keys for diagonal movement.
 			k = map_8way(j);
 		end
-		MAP_HB2P: begin                      // own pad: cross + fire on 0
-			k = map_cross(j);
+		MAP_ROBSON2P: begin                  // own pad: 4-way + fire on 0
+			k = map_4way(j);
 			if (j[4]) k[0] = 1'b1;
 		end
 		MAP_RACE: ;                         // Race reads gameplay controls on keypad B
@@ -418,7 +418,7 @@ function automatic [9:0] map_padA(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
 		end
-		MAP_DOODLE: begin                   // Doodle/Patterns: B-side 8-way, single-player
+		MAP_ART: begin                      // Doodle/Patterns: B-side 8-way, single-player
 			k = map_8way(j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
@@ -448,8 +448,8 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 	begin
 		k = 10'd0;
 		case (prof)
-		MAP_CROSS: begin
-			k = map_cross(j);
+		MAP_4WAY: begin
+			k = map_4way(j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;           // Extra
 		end
@@ -474,13 +474,13 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[3]) k[2] = 1'b1;   if (j[2]) k[8] = 1'b1;
 		end
-		MAP_HOMEBREW: begin
+		MAP_ROBSON: begin
 			// Invaders fires on B0 and restarts on A0; Pacman reads down on B8.
-			k = map_cross(j);
+			k = map_4way(j);
 			if (j[4]) k[0] = 1'b1;
 		end
-		MAP_HB2P: begin                      // own pad: cross + fire on 0
-			k = map_cross(j);
+		MAP_ROBSON2P: begin                  // own pad: 4-way + fire on 0
+			k = map_4way(j);
 			if (j[4]) k[0] = 1'b1;
 		end
 		MAP_RACE: begin                    // Race: B4/B6 steer, B2 accelerate, B5 brake
@@ -499,7 +499,7 @@ function automatic [9:0] map_padB(input [3:0] prof, input [31:0] j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
 		end
-		MAP_DOODLE: begin                   // Doodle/Patterns: B-side 8-way, single-player
+		MAP_ART: begin                      // Doodle/Patterns: B-side 8-way, single-player
 			k = map_8way(j);
 			if (j[4]) k[5] = 1'b1;
 			if (j[5]) k[0] = 1'b1;
@@ -527,8 +527,8 @@ endfunction
 
 wire profile_1p = (profile == MAP_SPACEWAR) || (profile == MAP_FREEWAY) ||
 	              (profile == MAP_BOWLING)  || (profile == MAP_NONE) ||
-	              (profile == MAP_HOMEBREW) || (profile == MAP_VIS_ART) ||
-                  (profile == MAP_8WAY)     || (profile == MAP_DOODLE) ||
+	              (profile == MAP_ROBSON)   || (profile == MAP_VIS_ART) ||
+                  (profile == MAP_8WAY)     || (profile == MAP_ART) ||
                   (profile == MAP_RACE)     || (profile == MAP_TENNIS) ||
                   (profile == MAP_CHIP8)    || (profile == MAP_CLIMB) ||
                   (profile == MAP_EXPLORER);
@@ -548,8 +548,8 @@ wire       start_press = joystick_0[6] | joystick_1[6];
 wire [3:0] active_start_key = (profile == MAP_TENNIS) ? 4'd1
 	                         : cart_s3_menu ? 4'd1
 	                         : ((profile == MAP_VIS_ART) && no_cart && builtin_sel) ? builtin_start_key
-	                         : no_cart ? ((profile == MAP_DOODLE) ? 4'd1 : resident_start_key)
-	                         : (((profile == MAP_DOODLE) || (profile == MAP_CHIP8)) ? 4'd1
+	                         : no_cart ? ((profile == MAP_ART) ? 4'd1 : resident_start_key)
+	                         : (((profile == MAP_ART) || (profile == MAP_CHIP8)) ? 4'd1
 	                                                                                 : start_key);
 wire       builtin_keypad_only = no_cart && builtin_sel && (builtin_profile == MAP_NONE);
 wire       start_enabled = (active_start_key < 4'd10) && (profile != MAP_FREEWAY) &&
@@ -571,12 +571,12 @@ wire eightway_auto = (profile == MAP_8WAY) && (players == 2'd0);
 wire [9:0] joyA = ((profile == MAP_NONE) ? 10'd0
 	            : ((profile == MAP_TENNIS) && (players == 2'd0)) ? 10'd0
 	            : (eightway_auto && eightway_pad_b) ? 10'd0
-	            : ((profile == MAP_DOODLE) ? 10'd0
+	            : ((profile == MAP_ART) ? 10'd0
 	                                      : map_padA(profile, joystick_0)));
 
 wire [9:0] joyB = ((profile == MAP_NONE) ? 10'd0
 	            : (eightway_auto && !eightway_pad_b) ? 10'd0
-	            : ((profile == MAP_DOODLE) ? map_padB(MAP_DOODLE, joystick_0)
+	            : ((profile == MAP_ART) ? map_padB(MAP_ART, joystick_0)
 	                                      : map_padB(profile, joyB_input)));
 wire [9:0] joyA_active = joyA | directA | start_keys_a;
 wire [9:0] joyB_active = joyB | directB | start_keys_b;

@@ -29,7 +29,7 @@
 16'h03E6, 16'h8404, 16'h9505, 16'hD0DA, 16'hD13E, 16'hE153:
 	begin
 
-		p = MAP_CROSS;
+		p = MAP_4WAY;
 
 		s = 4'd1;
 
@@ -40,7 +40,7 @@
 16'hD2F0, 16'hD481, 16'hF7A3:
 	begin
 
-		p = MAP_CROSS;
+		p = MAP_4WAY;
 
 		s = 4'd1;
 
@@ -50,7 +50,7 @@
 16'h0192, 16'h8D88, 16'hD4A0:
 	begin
 
-		p = MAP_CROSS;
+		p = MAP_4WAY;
 
 		s = 4'd0;
 
@@ -89,7 +89,7 @@
 // Grand Pack: paged image, sharing the Studio III firmware menu.
 16'h1594:
 	begin
-		p = MAP_DOODLE;
+		p = MAP_ART;
 		s = START_S3_MENU;
 	end
 
@@ -98,7 +98,7 @@
 16'hEF21, 16'hFC34, 16'hFC72:
 	begin
 
-		p = MAP_DOODLE;
+		p = MAP_ART;
 
 		s = 4'd1;
 
@@ -109,7 +109,7 @@
 16'h6EE1, 16'hA008, 16'hAAFB, 16'hE977:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd5;
 
@@ -120,7 +120,7 @@
 16'h2E9E, 16'h2143, 16'h21A3, 16'h4771, 16'h7C7D, 16'h73A0:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd5;
 
@@ -131,7 +131,7 @@
 16'h937A, 16'hA9DA, 16'hFB00:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd0;
 
@@ -141,7 +141,7 @@
 16'h6793, 16'hDFCF, 16'h8551, 16'h18DB, 16'h08D3, 16'hF42A:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd0;
 
@@ -151,7 +151,7 @@
 16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4, 16'hB99C:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd0;
 
@@ -161,7 +161,7 @@
 16'hBA0B, 16'hE45F, 16'hFAA9, 16'h1280, 16'hD9F3, 16'hD341, 16'hFE3F:
 	begin
 
-		p = MAP_HOMEBREW;
+		p = MAP_ROBSON;
 
 		s = 4'd6;
 
@@ -173,7 +173,7 @@
 16'hB70E, 16'h650C, 16'hE142, 16'hFD35:
 	begin
 
-		p = MAP_HB2P;
+		p = MAP_ROBSON2P;
 
 		s = 4'd1;
 
@@ -185,7 +185,7 @@
 16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2, 16'hB075:
 	begin
 
-		p = MAP_HB2P;
+		p = MAP_ROBSON2P;
 
 		s = 4'd1;
 

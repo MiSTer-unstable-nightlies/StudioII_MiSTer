@@ -4,7 +4,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SIM="$ROOT/verilator/obj_dir_headless/Vtop"
+SIM="${HEADLESS_SIM:-$ROOT/verilator/obj_dir_headless/Vtop}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 [[ -x "$SIM" ]] || { echo "error: build the RTL sim: (cd verilator && make headless)" >&2; exit 1; }

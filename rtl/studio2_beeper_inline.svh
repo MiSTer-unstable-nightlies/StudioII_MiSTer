@@ -1,11 +1,4 @@
-//
-// Behavioral model of the Q-gated NE555, fitted to the reference recordings in
-// docs/beeper-status.md. The internal contour holds near 628.4Hz for 20ms, then
-// descends to 505.2Hz; the output period is scaled as one curve for the selected
-// console tuning. Q low reverses pitch through the audible release while a faster
-// hidden control trajectory preserves the gap-dependent starts measured with
-// FLiP's Q-Sound Test. A fresh Q-high drive contour prevents retriggers from
-// accumulating pitch drop.
+// model of NE555. based on FLiP's Q Sound Test recordings
 localparam [15:0] SND_HALF_TOP    = 16'd1400;
 localparam [15:0] SND_HALF_BOTTOM = 16'd1741;
 localparam [15:0] SND_HOLD_TICKS  = 16'd35205; // ~20ms
@@ -16,9 +9,7 @@ localparam [12:0] SND_ATTACK_STEP  = 13'd14;  // ~2ms zero-to-full
 localparam  [4:0] SND_DUTY_HIGH_PARTS = 5'd11;
 localparam  [4:0] SND_DUTY_PARTS      = 5'd17;
 localparam  [4:0] SND_DUTY_ROUND      = 5'd8;
-// Q14 full-period multipliers. Original is the December 1976 RCA demonstration
-// unit (0.9945 of the internal reference frequency). The three choices on
-// either side are one, three, and six cumulative reciprocal 31:32 steps.
+
 localparam [14:0] SND_TUNE_HIGHEST_Q14 = 15'd13617;
 localparam [14:0] SND_TUNE_HIGHER_Q14  = 15'd14978;
 localparam [14:0] SND_TUNE_HIGH_Q14    = 15'd15960;
@@ -57,7 +48,7 @@ begin
 end
 endfunction
 
-// Divider-only approximation of the rounded ~190ms driven descent.
+// Divider-only approximation
 function automatic [12:0] snd_decay_interval(input [15:0] half_period);
 begin
 	if      (half_period < 16'd1443) snd_decay_interval = 13'd240;
@@ -75,7 +66,7 @@ begin
 end
 endfunction
 
-// Gap-dependent hidden recovery fitted to the controlled Q-Sound Test series.
+// Gap-dependent hidden recovery fitted to the Q-Sound Test 
 function automatic [15:0] snd_control_interval(input [15:0] half_period);
 begin
 	if      (half_period >= 16'd1474) snd_control_interval = 16'd435;
@@ -89,7 +80,7 @@ begin
 end
 endfunction
 
-// Divider-only RC envelope: ~21ms prominent decay and ~96ms total tail.
+// Divider-only RC envelope: ~21ms prominent decay and ~96ms total tail
 function automatic [12:0] snd_release_interval(input [7:0] amplitude);
 begin
 	if      (amplitude >= 8'd192) snd_release_interval = 13'd170;
@@ -108,9 +99,7 @@ wire        snd_eb_long = (snd_eb_sum >= 11'd1024);
 wire [15:0] snd_next_base = ((snd_half == SND_HALF_TOP) && !snd_eb_long)
 	                         ? 16'd1400 : snd_half + 16'd1;
 
-// Scale the complete period before splitting it into the measured 11:6 ratio.
-// Explicitly widened operands retain all Q14 product bits. Rounding once per
-// full period keeps the high and residual low phases on one common tuning.
+// Scale before applying duty cycle
 wire [16:0] snd_base_full_ticks = {snd_cycle_base, 1'b0};
 wire [31:0] snd_tune_product = ({15'd0, snd_base_full_ticks}
 	                            * {17'd0, snd_cycle_scale});
@@ -146,9 +135,6 @@ always @(posedge clk_sys) begin
 	else if (ce_pix) begin
 		snd_q_prev <= Q;
 
-		// Q edges establish the three continuous trajectories. The audible period
-		// never jumps at an edge; the control and fresh-drive contours determine
-		// where it moves afterward.
 		if (Q != snd_q_prev) begin
 			snd_amp_cnt <= 13'd0;
 			if (Q) begin
@@ -166,7 +152,6 @@ always @(posedge clk_sys) begin
 		end
 
 		if (!Q) begin
-			// The audible release follows the slower Outbreak/Pac-Man upward tail.
 			if (snd_half > SND_HALF_TOP) begin
 				if (snd_curve_cnt >= SND_RELEASE_STEP-1'b1) begin
 					snd_curve_cnt <= 13'd0;
@@ -176,7 +161,6 @@ always @(posedge clk_sys) begin
 			end
 			else snd_curve_cnt <= 13'd0;
 
-			// The hidden control recovers more quickly along the Gunfighter curve.
 			if (!snd_q_prev) begin
 				if (snd_control_half > SND_HALF_TOP) begin
 					if (snd_control_cnt >= snd_control_interval(snd_control_half)-1'b1) begin
@@ -188,7 +172,6 @@ always @(posedge clk_sys) begin
 				else snd_control_cnt <= 16'd0;
 			end
 
-			// Q gates the envelope, not the oscillator, so the pitch remains continuous.
 			if (snd_amp != 8'd0) begin
 				if (!snd_q_prev && (snd_amp_cnt >= snd_release_interval(snd_amp)-1'b1)) begin
 					snd_amp_cnt <= 13'd0;
@@ -199,13 +182,12 @@ always @(posedge clk_sys) begin
 			else begin
 				snd_amp_cnt <= 13'd0;
 				snd_out <= 1'b0;
-				// Once inaudible, keep the stopped oscillator with the recovered control.
 				snd_half <= snd_control_half;
 			end
 		end
 		else begin
 			if (snd_q_prev) begin
-				// For the first 6ms, glide to the gap-dependent recovered control state.
+				// For first 6ms, glide to control state.
 				if (snd_on_ticks < SND_RETRIGGER_SETTLE) begin
 					if (snd_control_half > SND_HALF_TOP) begin
 						if (snd_control_cnt >= snd_control_interval(snd_control_half)-1'b1) begin
@@ -235,7 +217,6 @@ always @(posedge clk_sys) begin
 					snd_track_cnt <= 7'd0;
 				end
 
-				// The same note-age counter defines the 20ms upper-pitch crest.
 				if (snd_on_ticks < SND_HOLD_TICKS) begin
 					snd_on_ticks <= snd_on_ticks + 1'b1;
 					snd_curve_cnt <= 13'd0;
@@ -274,13 +255,11 @@ always @(posedge clk_sys) begin
 			else snd_amp_cnt <= 13'd0;
 		end
 
-		// Run one oscillator path for the driven sound and its fading release.
 		if (Q || (snd_amp != 8'd0)) begin
 			if (snd_cnt >= snd_toggle_at) begin
 				snd_cnt <= 16'd0;
 				snd_out <= ~snd_out;
-				// A low-to-high edge starts the next complete oscillator cycle.
-				// Select its base once so both phases use the same fractional period.
+
 				if (!snd_out) begin
 					snd_cycle_base <= snd_next_base;
 					snd_cycle_scale <= snd_tune_period_scale(beeper_tune);
@@ -295,10 +274,8 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Scale the 8-bit envelope by 24 (maximum 6120, close to the old +/-6000).
-// Production Studio III machines use the CDP1864's fixed-level tone instead.
+// Scale by 24 for max magnitude of 6120
 wire [13:0] snd_magnitude = ({6'd0, snd_amp} << 4) + ({6'd0, snd_amp} << 3);
 wire signed [15:0] snd_sample = snd_out ? $signed({2'b00, snd_magnitude})
 	                                   : -$signed({2'b00, snd_magnitude});
 assign audio = is_studio3 ? (aud_tone ? 16'sd6000 : -16'sd6000) : snd_sample;
-

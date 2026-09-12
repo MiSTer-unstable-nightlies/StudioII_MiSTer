@@ -12,6 +12,8 @@ Selections 10–15 have no key. CLEAR is independent of both pads.
 `Studio-II.sv` supplies MiSTer joystick, keyboard, direct keypad and Numstick
 inputs. `rtl/rcastudioii.sv` combines them into A/B masks for the selected digit.
 Direct bindings and Numstick remain available alongside a controller profile.
+The physical keyboard switches to the standard 4x4 QWERTY CHIP-8 layout only
+while CHIP-8 is active; held keyboard state is cleared at that mode boundary.
 
 `rtl/studio2_input_mapping.svh` owns identification, profile state, keypad masks
 and controller routing. `rtl/studio2_cart_profiles.svh` maps cartridge CRCs to a

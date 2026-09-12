@@ -21,7 +21,8 @@
 
 module dpram #(
     parameter data_width_g = 8,
-    parameter addr_width_g = 14
+    parameter addr_width_g = 14,
+    parameter init_file_g = ""
 ) (
     input   wire                        clock,
 
@@ -42,6 +43,14 @@ module dpram #(
 
 // Shared memory
 logic [data_width_g-1:0] mem [(2**addr_width_g)-1:0];
+
+generate
+    if (init_file_g != "") begin : init_rom
+        initial begin
+            $readmemh(init_file_g, mem, 0);
+        end
+    end
+endgenerate
 
 // Port A
 always @(posedge clock) begin

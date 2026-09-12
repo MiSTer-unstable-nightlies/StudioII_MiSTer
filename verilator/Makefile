@@ -9,7 +9,8 @@ COSIM = n
 
 TOP = --top-module top
 RTL = ../rtl
-V_INC = +incdir+$(RTL) 
+OS2_IMAGE = $(abspath ../rom/openstudio2.hex)
+V_INC = +incdir+$(RTL) +define+OS2_INIT_FILE=\"$(OS2_IMAGE)\"
 
 V_DEFINE = +define+debug=1 +define+SIMULATION=1   -CFLAGS "-I../sim/imgui -I../sim/ -O3" 
 #V_DEFINE += --converge-limit 2000 -Wno-WIDTH -Wno-IMPLICIT -Wno-MODDUP -Wno-UNSIGNED -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-SYMRSVDWORD -Wno-COMBDLY -Wno-INITIALDLY -Wno-BLKANDNBLK -Wno-UNOPTFLAT -Wno-SELRANGE -Wno-CMPCONST -Wno-CASEOVERLAP -Wno-PINMISSING -Wno-MULTIDRIVEN
@@ -86,6 +87,7 @@ VOUT = obj_dir/Vtop.cpp
 HL_DIR = obj_dir_headless
 HL_EXE = ./$(HL_DIR)/Vtop
 HL_SRC = sim_headless.cpp
+HL_HEADERS = $(wildcard $(RTL)/*.svh)
 HL_VOPT = -O3 --x-assign fast --x-initial fast --noassert --public-flat-rw \
 	-Wno-fatal -Wno-PINMISSING -Wno-WIDTH -Wno-UNOPTFLAT -Wno-CASEINCOMPLETE
 
@@ -93,12 +95,15 @@ all: $(EXE)
 
 headless: $(HL_EXE)
 
-$(HL_EXE): $(V_SRC) $(HL_SRC) Makefile
+loader-regression:
+	python3 test_loader.py
+
+$(HL_EXE): $(V_SRC) $(HL_HEADERS) $(HL_SRC) $(OS2_IMAGE) Makefile
 	$V -cc $(HL_VOPT) -exe --Mdir ./$(HL_DIR) $(V_INC) $(TOP) \
-		-CFLAGS "-O2 -std=c++17" -LDFLAGS "-lz" $(V_SRC) $(HL_SRC)
+		-CFLAGS "-O2 -std=c++17" -CFLAGS '-DOS2_INIT_FILE=\"$(OS2_IMAGE)\"' -LDFLAGS "-lz" $(V_SRC) $(HL_SRC)
 	$(MAKE) -C $(HL_DIR) -f Vtop.mk
 
-$(VOUT): $(V_SRC)  Makefile
+$(VOUT): $(V_SRC) $(OS2_IMAGE) Makefile
 	$V -cc $(V_OPT) -LDFLAGS "$(LDFLAGS)" -exe --trace --savable --Mdir ./obj_dir $(V_DEFINE) $(V_INC) $(TOP) -CFLAGS "$(CFLAGS)" $(V_SRC) $(C_SRC)
 
 $(EXE): $(VOUT) $(C_SRC)
@@ -114,4 +119,4 @@ lint:
 clean:
 	rm -rf obj_dir $(HL_DIR)
 
-.PHONY: all headless lint fast clean
+.PHONY: all headless loader-regression lint fast clean

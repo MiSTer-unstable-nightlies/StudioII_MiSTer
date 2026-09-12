@@ -8,13 +8,8 @@ module studio2_beeper
 	output signed [15:0] audio
 );
 
-// Behavioral model of the Q-gated NE555, fitted to the reference recordings in
-// docs/beeper-status.md. The internal contour holds near 628.4Hz for 20ms, then
-// descends to 505.2Hz; the output period is scaled as one curve for the selected
-// console tuning. Q low reverses pitch through the audible release while a faster
-// hidden control trajectory preserves the gap-dependent starts measured with
-// FLiP's Q-Sound Test. A fresh Q-high drive contour prevents retriggers from
-// accumulating pitch drop.
+// Behavioral model NE555, fitted to reference recordings
+// from FLiP's Q sound test ROM
 localparam [15:0] SND_HALF_TOP    = 16'd1400;
 localparam [15:0] SND_HALF_BOTTOM = 16'd1741;
 localparam [15:0] SND_HOLD_TICKS  = 16'd35205; // ~20ms
@@ -25,9 +20,7 @@ localparam [12:0] SND_ATTACK_STEP  = 13'd14;  // ~2ms zero-to-full
 localparam  [4:0] SND_DUTY_HIGH_PARTS = 5'd11;
 localparam  [4:0] SND_DUTY_PARTS      = 5'd17;
 localparam  [4:0] SND_DUTY_ROUND      = 5'd8;
-// Q14 full-period multipliers. Original is the December 1976 RCA demonstration
-// unit (0.9945 of the internal reference frequency). The three choices on
-// either side are one, three, and six cumulative reciprocal 31:32 steps.
+// each step increases in magnitude
 localparam [14:0] SND_TUNE_HIGHEST_Q14 = 15'd13617;
 localparam [14:0] SND_TUNE_HIGHER_Q14  = 15'd14978;
 localparam [14:0] SND_TUNE_HIGH_Q14    = 15'd15960;

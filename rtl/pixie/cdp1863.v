@@ -3,10 +3,8 @@
 //  CDP1863 programmable frequency generator -- and the identical generator
 //  built into the CDP1864.
 //
-//  Written 2026 by Alan Steremberg. Extracted from rtl/pixie/cdp1864.v when the
-//  NTSC Studio III turned out to be a CDP1861 + CDP1862 + CDP1863 rather than a
-//  CDP1864 (docs/succession-plan.md §9), so both machines need this and only one
-//  of them has an 1864 to hold it.
+//  Written 2026 by Alan Steremberg. Shared by the standalone CDP1863 in Studio
+//  III NTSC and the equivalent generator integrated into the CDP1864.
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -15,32 +13,10 @@
 //
 //============================================================================
 //
-//  Sources, all agreeing (see docs/succession-plan.md §6):
-//
-//  * CDP1864 datasheet p1: "a programmable frequency generator designed to
-//    produce 256 tones that range from 107 Hz to 13672 Hz".
-//  * Datasheet p7 control-line truth table: op code 64 -> LOAD TONE GENERATOR
-//    LATCH; "AUD - AUDIO OUT: This is the output of the programmable frequency
-//    generator."
-//  * Datasheet p6: TPB "is used ... as the input to the tone generator", so the
-//    divider runs at the machine-cycle rate -- cpu_ce here.
-//  * Datasheet p5: AOE "allows the selected frequency to be generated at the
-//    AUDIO-OUT terminal. A low-level input holds AUDIO OUT low. AOE may be
-//    connected to Q output of the CDP1802."
-//  * Weisbecker's Studio III notes, docs/rca-technical/Studio II III IV/
-//    IMG_1537.JPG: "64 INSTRUCTION SETS SOUND FREQUENCY (INVERSE)" and
-//    "Q GATES SOUND OUTPUT".
-//
-//  The datasheet pins only the endpoints of the range, so the division chain is
-//  MAME's. The two parts differ by exactly one stage:
-//
-//      CDP1864 (integrated)  f = clock / 8 / 4 / (latch+1) / 2
-//      CDP1863 (standalone)  f = clock / 8     / (latch+1) / 2
-//
-//  clock/8 is the machine-cycle rate either way, so in cpu_ce ticks the output
-//  toggles every 4*(latch+1) on the 1864 and every (latch+1) on the 1863 -- the
-//  same latch giving four times the frequency on the standalone part. That is
-//  MAME's cdp1863.cpp driven from its clock2 input, which is where TPB goes.
+//  CDP1864 datasheet: TPB clocks tone (p6), OUT 4 loads the latch (p7),
+//  and AOE gates AUDIO OUT (p5). Divider stages follow MAME cdp1863:
+//      CDP1864: half-period = 4*(latch+1) TPB ticks
+//      CDP1863: half-period =   (latch+1) TPB ticks
 //
 //============================================================================
 
@@ -81,15 +57,10 @@ always @(posedge clk) begin
     else begin
         aoe_d <= aoe;
 
-        //  MAME reverts the latch to its default when AOE goes away
-        //  (cdp1864_device::aoe_w). Undocumented -- neither the datasheet nor
-        //  Weisbecker mentions it -- but it is the only account of it.
-        //
-        //  Note it is the *edge* that resets, not the level. Holding the latch at
-        //  its default for as long as AOE is low would make it impossible to set
-        //  the pitch before enabling the tone, which is the natural order for
-        //  software and the order tools/tone-test.sh uses. Writing it as a level
-        //  is what that test caught: every latch value read back as 0x35.
+        // MAME resets the latch on AOE's falling edge; neither the datasheet nor
+        // Weisbecker's notes document this behavior. Do not reset by level:
+        // software may load the pitch before enabling tone. OUT 4 wins if both
+        // occur together.
         if (aoe_d && !aoe) tone_latch <= TONE_DEFAULT;
         if (tone_we)       tone_latch <= tone_d;       // OUT 4 always wins
 

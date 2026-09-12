@@ -165,11 +165,6 @@ int verilate() {
 
 		ServiceScheduledKeys();
 
-		// Assert reset during startup
-		//if (main_time < initialReset) { top->reset = 1; }
-		// Deassert reset after startup
-		//if (main_time == initialReset) { top->reset = 0; }
-
 		// Clock dividers
 		clk_48.Tick();
 		clk_24.Tick();
@@ -403,14 +398,12 @@ int main(int argc, char** argv, char** env) {
 		if (ImGui::Button("Start running")) { run_enable = 1; } ImGui::SameLine();
 		if (ImGui::Button("Stop running")) { run_enable = 0; } ImGui::SameLine();
 		ImGui::Checkbox("RUN", &run_enable);
-		//ImGui::PopItemWidth();
 		ImGui::SliderInt("Run batch size", &batchSize, 1, 250000);
 		if (single_step == 1) { single_step = 0; }
 		if (ImGui::Button("Single Step")) { run_enable = 0; single_step = 1; }
 		ImGui::SameLine();
 		if (multi_step == 1) { multi_step = 0; }
 		if (ImGui::Button("Multi Step")) { run_enable = 0; multi_step = 1; }
-		//ImGui::SameLine();
 		ImGui::SliderInt("Multi step amount", &multi_step_amount, 8, 1024);
 		if (ImGui::Button("Load ST2"))
     	ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".st2", ".");
@@ -423,10 +416,6 @@ int main(int argc, char** argv, char** env) {
 		console.Draw(windowTitle_DebugLog, &showDebugLog, ImVec2(500, 700));
 		ImGui::SetWindowPos(windowTitle_DebugLog, ImVec2(0, 160), ImGuiCond_Once);
 
-		// Memory debug
-		//ImGui::Begin("ROM");
-		//mem_edit.DrawContents(&top->rootp->top__DOT__rcastudio__DOT__Rom_StudioII__DOT__d, 2048, 0);
-		//ImGui::End();
 		// The selected native ROM (or shared CHIP-8 ROM while active) and the
 		// 512 bytes of RAM are separate arrays -- see rtl/rcastudioii.sv.
 		ImGui::Begin("ROM / cartridge $0000-$0FFF");
@@ -557,22 +546,6 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Spacing();														
 		ImGui::End();
 
-		// Debug Keypad 1
-//		ImGui::Begin("Keypad 1");
-//		ImGui::Text("btnKP1: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1);	
-		/*ImGui::Text("btnKP1_2: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_2);
-		ImGui::Text("btnKP1_3: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_3);
-		ImGui::Text("btnKP1_4: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_4);
-		ImGui::Text("btnKP1_5: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_5);		
-		ImGui::Text("btnKP1_6: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_6);	
-		ImGui::Text("btnKP1_7: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_7);
-		ImGui::Text("btnKP1_8: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_8);
-		ImGui::Text("btnKP1_9: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_9);
-		ImGui::Text("btnKP1_0: 	0x%02X", top->rootp->top__DOT__rcastudio__DOT__btnKP1_0);	*/						
-//		ImGui::Spacing();														
-//		ImGui::End();
-
-		//PlayerA
 		ImGui::Begin("Controls");
 		ImGui::Text("Player A: 	0x%03X", top->rootp->top__DOT__rcastudio__DOT__playerA);
 		ImGui::Text("Player B: 	0x%03X", top->rootp->top__DOT__rcastudio__DOT__playerB);
@@ -598,7 +571,7 @@ int main(int argc, char** argv, char** env) {
 
 		if (ImGui::InputText("TraceFilename", Trace_File_tmp, IM_ARRAYSIZE(Trace_File), ImGuiInputTextFlags_EnterReturnsTrue))
 		{
-			strcpy(Trace_File, Trace_File_tmp); //TODO onChange Close and open new trace file
+			strcpy(Trace_File, Trace_File_tmp);
 			tfp->close();
 			if (Trace) tfp->open(Trace_File);
 		};
@@ -609,7 +582,7 @@ int main(int argc, char** argv, char** env) {
 		} ImGui::SameLine();
 		if (ImGui::InputText("SaveFilename", SaveModel_File_tmp, IM_ARRAYSIZE(SaveModel_File), ImGuiInputTextFlags_EnterReturnsTrue))
 		{
-			strcpy(SaveModel_File, SaveModel_File_tmp); //TODO onChange Close and open new trace file
+			strcpy(SaveModel_File, SaveModel_File_tmp);
 		}
 		ImGui::End();
 		int windowX = 550;
@@ -627,26 +600,21 @@ int main(int argc, char** argv, char** env) {
 		ImGui::SliderInt("Rotate", &video.output_rotate, -1, 1); ImGui::SameLine();
 		ImGui::Checkbox("Flip V", &video.output_vflip);
 		ImGui::Text("main_time: %d frame_count: %d sim FPS: %f", main_time, video.count_frame, video.stats_fps);
-		//ImGui::Text("pixel: %06d line: %03d", video.count_pixel, video.count_line);
-
 		// Draw VGA output
 		ImGui::Image(video.texture_id, ImVec2(video.output_width * VGA_SCALE_X, video.output_height * VGA_SCALE_Y));
 		ImGui::End();
 
   		if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey"))
   		{
-    		// action if OK
-    		if (ImGuiFileDialog::Instance()->IsOk())
+		if (ImGuiFileDialog::Instance()->IsOk())
     		{
       			std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
       			std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
-      			// action
 				fprintf(stderr,"filePathName: %s\n",filePathName.c_str());
 				fprintf(stderr,"filePath: %s\n",filePath.c_str());
      			bus.QueueDownload(filePathName, 1, 1);
     		}
-    		// close
-    		ImGuiFileDialog::Instance()->Close();
+		ImGuiFileDialog::Instance()->Close();
   		}
 
 #ifndef DISABLE_AUDIO
@@ -654,12 +622,6 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Begin(windowTitle_Audio);
 		ImGui::SetWindowPos(windowTitle_Audio, ImVec2(windowX, windowHeight), ImGuiCond_Once);
 		ImGui::SetWindowSize(windowTitle_Audio, ImVec2(windowWidth, 250), ImGuiCond_Once);
-
-
-		//float vol_l = ((signed short)(top->AUDIO_L) / 256.0f) / 256.0f;
-		//float vol_r = ((signed short)(top->AUDIO_R) / 256.0f) / 256.0f;
-		//ImGui::ProgressBar(vol_l + 0.5f, ImVec2(200, 16), 0); ImGui::SameLine();
-		//ImGui::ProgressBar(vol_r + 0.5f, ImVec2(200, 16), 0);
 
 		int ticksPerSec = (24000000 / 60);
 		if (run_enable) {

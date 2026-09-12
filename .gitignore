@@ -55,7 +55,10 @@ output_files/
 PLLJ_PLLSPE_INFO.txt
 
 # intentionally leaving out of MiSTer-devel
-rom/
+rom/*
+!rom/openstudio2.hex
+!rom/openstudio2-LICENSE.txt
+!rom/openstudio2.md
 rbf_archive/
 audio_refs/
 refs/

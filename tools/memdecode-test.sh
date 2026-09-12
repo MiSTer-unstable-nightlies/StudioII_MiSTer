@@ -2,10 +2,10 @@
 # ---------------------------------------------------------------------------
 # Directed test for the memory decode in rtl/rcastudioii.sv.
 #
-# None of the commercial or homebrew software in software/ or refs/ touches the
-# RAM mirrors, so the frame comparison cannot tell a correct decode from
-# the old truncate-to-12-bits one. This builds a tiny native-1802 cartridge that
-# pokes every case and checks the result out of the simulated RAM.
+# The known software corpus does not touch the RAM mirrors, so frame comparison
+# cannot distinguish a correct decode from truncating addresses to 12 bits. This
+# builds a tiny native-1802 cartridge that pokes every case and checks the result
+# in simulated RAM.
 #
 #   tools/memdecode-test.sh
 #
@@ -21,17 +21,17 @@
 #   $1000 read   -> RAM $0800        ROM is NOT mirrored above $0FFF
 #   $1200 read   -> open bus         A9 = 1
 # ---------------------------------------------------------------------------
-set -uo pipefail
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RTL="$ROOT/verilator/obj_dir_headless/Vtop"
+RTL="${HEADLESS_SIM:-$ROOT/verilator/obj_dir_headless/Vtop}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 [[ -x "$RTL" ]] || { echo "error: build the RTL sim: (cd verilator && make headless)" >&2; exit 1; }
 
 # Hand-assembled, because it is 90 bytes and the point is to have no build step.
 # The cartridge starts with the usual two-byte CHIP-8 "call machine code" word
-# that every Studio II native program uses (see refs/studio2-games).
+# used by Studio II native programs.
 python3 - "$TMP/memtest.bin" <<'EOF'
 import sys
 LDI = lambda v: [0xF8, v]
@@ -58,7 +58,7 @@ open(sys.argv[1], 'wb').write(bytes(code) + bytes(0x400 - len(code)))
 EOF
 
 "$RTL" --bios "$ROOT/rom/studio2.rom" --cart "$TMP/memtest.bin" \
-       --frames 30 --dump 29 --vram --dump-file "$TMP/dump.txt" --quiet >/dev/null 2>&1
+       --frames 30 --dump 29 --vram --dump-file "$TMP/dump.txt" --quiet >/dev/null
 
 byte() {  # $1 = address, e.g. 08F0
     local row=${1:0:3}0 col=$(( 16#${1:3:1} ))

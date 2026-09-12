@@ -1,171 +1,170 @@
-# Analog video: what is emitted, what is unverified, how to test it
+# Analog video verification
 
-Status as of 2026-08-19: **the core emits a full analog raster with correct
-timings, and nobody has ever seen it on a display.** Everything below the
-"Verified" line is checked against the datasheet and the simulator; everything
-below "Unverified" needs a MiSTer with an analog IO board and ten minutes.
+Status as of 2026-09-11: the current RTL generates a full raster with the bitmap
+inside it. The implementation below was checked against the current source.
+Verification is only partial; direct video is yet untested.
 
-This is the one part of the core where the Verilator harness cannot help at all.
-It captures `bitmap_de` — the 64×128 / 64×192 bitmap alone — precisely so the
-recorded scores keep their meaning across raster changes. So the raster is
-outside every test in the repo, by design.
+## Current raster
 
----
+Timing is defined in `rtl/pixie/cdp1861.v` and `rtl/pixie/cdp1864.v`.
+Studio II, Studio III NTSC, and Visicom use the CDP1861 timing path; Studio III
+PAL uses CDP1864. All ranges below include the start and exclude the end, and
+horizontal positions are native pixel times before top-level repetition.
 
-## 1. What the hardware does, and why it matters
+| Property | CDP1861 timing | CDP1864 timing |
+|---|---:|---:|
+| Line length | 112 pixel times | 112 pixel times |
+| Frame length | 262 lines | 312 lines |
+| Front porch | `0..8` | `0..8` |
+| HSync | `8..16` | `8..16` |
+| Back porch | `16..24` | `16..24` |
+| Active horizontal window | `24..112` | `24..112` |
+| VSync | `254..258` | `0..4` |
+| VBlank | `254..262` and `0..12` | `0..20` |
+| Bitmap window | `40..104`, lines `80..208` | `40..104`, lines `76..268` |
+| Active raster | 88 x 242 | 88 x 292 |
+| Bitmap capture | 64 x 128 | 64 x 192 |
+| Approximate line rate | 15.715 kHz | 15.715 kHz |
+| Approximate frame rate | 59.98 Hz | 50.37 Hz |
 
-The CDP1861/1864 emit a **full-size TV raster with a small bitmap inside it**.
-The border is not blanking — it is active video painted in the background
-colour. Nothing scales anything:
+`rtl/pll/pll_0002.v` specifies `clk_sys` at 7.040229 MHz. The native pixel
+clock enable divides this by four, giving approximately 1.760057 MHz, or
+568.16 ns per pixel time. A line is approximately 63.63 microseconds; each
+8-pixel porch/sync interval is 4.55 microseconds, and active video lasts
+50.00 microseconds. These are calculations from the configured clock, not
+measurements. The 1.760229 MHz figure in a top-level comment is inconsistent
+with the PLL's divide-by-four value.
 
-- **Vertically**, software shows each logical row over several scanlines by
-  rewinding `R(0)` — 4 lines a row on the NTSC 1861, 6 on the PAL 1864. That is
-  what the BIOS ISR's repeated `DEC R0` / `PLO R0` is doing, and why 32 rows
-  becomes 128 or 192 lines.
-- **Horizontally**, pixels are simply *wide*: one per CPU clock, 568 ns each, so
-  64 of them span 36.4 µs of a ~51 µs active line.
-- **The rest of the raster is background colour.**
+The generators emit one bit per native pixel time. Firmware can repeat bitmap
+rows through DMA/R0 addressing; the video generator does not itself expand
+32 rows into 128 or 192 lines. The MiSTer integration subsequently repeats each
+native pixel four times horizontally without changing line or frame duration.
 
-Sources: CDP1864 datasheet Fig. 4 (the `BACKGROUND` region around the
-`DISPLAY AREA`), Fig. 6 (13.14 µs of horizontal blanking in a 64 µs line), and
-MAME's `cdp1861.h` (`HBLANK_END = 12` of `SCREEN_WIDTH = 112`;
-`SCANLINE_VBLANK_END = 16` of 262). Photographs of real Studio III output show it
-too: picture in the middle, wide border, border in the background colour.
+With Borders On, the area around the bitmap is active background video:
 
-The original defect was that we blanked everything outside the bitmap, so the
-active area was 64×128 in a 112×262 frame. A display that locked to the sync
-would have had almost nothing to draw. That is fixed; `docs/development.md`
-summarizes the current video path and timing constraints.
+- Studio II uses the selected palette background, black by default.
+- Studio III NTSC and PAL use the selected background once display and colour
+  are enabled; before that, the border is black. The background steps through
+  blue, black, green, and red. The top level uses `0x80` for asserted background
+  RGB channels and `0xFF` for foreground channels.
+- Visicom uses palette colour 0, initially `#11320C` (dark green). Loading a
+  palette can change it.
 
----
+## Timing limitations
 
-## 2. Verified: what the core emits today
+The horizontal bitmap window remains offset: 16 native pixels of border on the
+left and eight on the right. Its fixed read window accommodates DMA arrival
+phase; it is not a measurement of original hardware placement. Preserve the
+DMA/interrupt/EF phase when investigating centring. See
+[development.md](development.md) before changing timing.
 
-Constants live in `rtl/pixie/cdp1861.v` and `rtl/pixie/cdp1864.v`. Both parts run
-a 112-pixel line at the 1.76 MHz pixel clock (568 ns/pixel, 63.6 µs/line).
+The RTL comments reference CDP1864 datasheet Figures 4 and 6, but the current
+porches are equal and do not reproduce the cited asymmetric hardware timing.
+The PAL source also records conflicting vertical-blanking figures (20H versus
+24H) and uses 20 lines. Its 192-line bitmap starts at line 76 following Emma 02;
+the source explicitly calls for hardware checking before moving it. These
+choices do not establish exact datasheet or hardware agreement.
 
-| | CDP1861 (NTSC) | CDP1864 (PAL) |
-|---|---|---|
-| line | 112 px | 112 px |
-| frame | 262 lines | 312 lines |
-| front porch | `0..8` = 4.54 µs | `0..8` = 4.54 µs |
-| HSync | `8..16` = 4.54 µs | `8..16` = 4.54 µs |
-| back porch | `16..24` = 4.54 µs | `16..24` = 4.54 µs |
-| active | `24..112` = 49.99 µs | `24..112` = 49.99 µs |
-| VSync | lines `254..258` (4 lines) | lines `0..4` (4 lines) |
-| VBlank | 20 lines, wrapping `254..262`+`0..12` | 20 lines, `0..20` |
-| line rate | 15.72 kHz | 15.72 kHz |
-| frame rate | 59.99 Hz | 50.37 Hz |
-| bitmap | `40..104` × lines `80..208` | `40..104` × lines `76..268` |
-| **raster** | **88 × 242** | **88 × 292** |
+Both generators produce a simple four-line VSync pulse. Display lock and the
+resulting framework composite-sync waveform still need physical verification.
 
-Against datasheet Fig. 6 (PAL): front porch 3.14 µs, HSync 4.57, back porch 3.43,
-active 50.86. Ours is within half a microsecond on sync and active; the porches
-are evenly split where the real part is asymmetric.
+## MiSTer output path
 
-Border colour: the **background colour** on the 1864 (Fig. 4's `BACKGROUND`
-region, which is what makes the picture fill a TV) and black on the mono 1861.
-The Visicom's border is its colour 0, a dark green.
+`Studio-II.sv` currently uses:
 
-### The one known deviation
-
-**The picture is not horizontally centred**: 16 px of border on the left against
-8 on the right. The bitmap is pinned at `40..104` because the BIOS ISR counts
-cycles against the DMA burst, and moving the bitmap means moving the DMA phase.
-Do not "fix" this without reading the video behavior and hardware constraints in
-`docs/development.md` — the DMA phase is the most load-bearing timing in the core
-and two separate classes of bug have already come out of it.
-
-If centring is wanted, the safe change is to shift `H_ACTIVE_START`, `HSYNC_*`
-and the porches *around* the fixed bitmap, not to move the bitmap.
-
----
-
-## 3. Unverified: everything past this point
-
-Nobody has run this on an analog display. What follows is what to do and what to
-expect, not a report.
-
-### How the signal gets out
-
-`Studio-II.sv` wires:
-
-```
-CLK_VIDEO  = clk_sys                (7.04 MHz)
-CE_PIXEL   <- video_mixer           (ce_pix = clk_sys/4 = 1.76 MHz)
-video_mixer #(.LINE_LENGTH(140), .GAMMA(1))  scandoubler = forced_scandoubler
-video_freak                          aspect ratio + integer scaling
-VGA_SCALER  = 0
-VGA_SL      = 0
+```text
+Native machine: clk_sys approximately 7.040229 MHz, ce_pix = clk_sys / 4
+CLK_VIDEO = clk_vid approximately 42.241379 MHz
+video_mixer input enable = clk_vid / 6, approximately 7.040230 MHz
+CE_PIXEL = video_mixer output enable
+video_mixer: LINE_LENGTH=352, GAMMA=1, hq2x=0
+scandoubler = forced_scandoubler
+VGA_SCALER = 0
+VGA_SL = 0
 VGA_DISABLE = 0
 ```
 
-So the analog path is: core → `video_mixer` (optionally scandoubled) →
-`video_freak` → `VGA_*`. `VGA_SCALER = 0` means analog gets the core's own
-timings rather than the HDMI scaler's output.
+RGB passes through palette selection and the optional on-screen keypad, then
+is sampled with sync and selected blanking into `clk_vid`. `video_mixer`
+produces VGA RGB/HS/VS and derives DE from blanking. `video_freak` receives that
+DE and supplies cropped DE and aspect/integer-scaling parameters to the MiSTer
+framework; it does not scale the RGB stream itself. Only its VS input is delayed
+by one `CE_PIXEL`, to preserve its active-line measurement. Output VGA VS is not
+delayed by that adjustment.
 
-Both machines run off the same 1.76 MHz pixel clock and the same 112-pixel line,
-so the **line rate is 15.72 kHz on both**; only the frame count differs — 262
-lines for **59.99 Hz** (NTSC) and 312 for **50.37 Hz** (PAL). That is a TV rate,
-not a VGA-monitor rate. So:
+The repeated full active line is 352 samples wide (88 x 4); with Borders Off,
+it is 256 samples (64 x 4). `LINE_LENGTH=352` accommodates the full raster.
+`VGA_SCALER=0` does not force the analog output through the HDMI scaler.
 
-| Display | What is needed |
+| Output | Configuration to test |
 |---|---|
-| CRT TV / RGB SCART / component | Native 15 kHz. Analog IO board, `forced_scandoubler` **off**. This is the case the raster work was for. |
-| VGA monitor | 31 kHz. Set `forced_scandoubler=1` in `MiSTer.ini`, or press the OSD's scandoubler toggle. `video_mixer` doubles it. |
-| HDMI | Unaffected — `video_freak` scales whatever it is given, which is why HDMI has always looked right. |
-| Direct Video | `direct_video=1` in `MiSTer.ini`. HDMI then carries the raw analog-timed signal for an external converter. The core needs nothing special beyond a valid raster. |
+| Native 15 kHz display | Suitable analog IO connection, `forced_scandoubler=0` |
+| VGA display supporting the resulting doubled timing | `forced_scandoubler=1`, approximately 31.43 kHz horizontal |
+| Normal HDMI | Framework scaler path |
+| Direct Video | `direct_video=1`, compatible external converter/display |
 
-The Borders option changes only the presented HBlank/VBlank window: Off masks
-the overscan around the 64x128 or 64x192 bitmap, while line/frame totals and
-HS/VS remain native. Analog sync therefore remains unchanged. The 216p crop is
-disabled in Direct Video because the framework reports no scaler dimensions;
-when active for a simultaneous 1080p scaler output it likewise masks DE without
-changing sync.
+Borders Off selects bitmap HBlank/VBlank before the mixer. It changes the
+presented active area without changing device HS, VS, or line/frame totals.
+The optional 216-line crop is enabled only when the framework reports 1920x1080
+and forced scandoubling is off. Direct Video reports zero scaler dimensions,
+so crop is disabled there. Crop changes DE, not sync; check its effect on a
+simultaneous analog output as well as HDMI.
 
-### Test procedure
+## Reset behaviour
 
-1. Build: `tools/quartus-build.sh` → `output_files/Studio-II.rbf`. Copy to
-   `/media/fat/_Console/`.
-2. Fit an **analog IO board**. Without one the VGA connector is not driven.
-3. Start with a CRT/SCART and `forced_scandoubler=0` in `MiSTer.ini`. Load the
-   BIOS from the OSD (the core is held in reset until you do — §6.3).
-4. Expected: a stable, centred-ish picture with a wide border. On Studio II the
-   border is black; on Studio III PAL it is whatever background colour the
-   program selected; on Visicom it is dark green.
-5. Then repeat with `forced_scandoubler=1` on a VGA monitor.
-6. Then `direct_video=1` on HDMI with a converter.
+Machine reset and video reset are separate. CLEAR, recognised cartridge,
+firmware and CHIP-8 downloads, and same-standard Apply and reset leave raster
+timing running. Core/MiSTer reset, unknown downloads, and PAL/NTSC changes use a
+hard video reset. A standard change can therefore require display resync.
+Missing firmware or a blank game picture should not be treated as proof that
+raster timing has stopped.
 
-### If it does not lock — read these in order
+## Hardware verification
 
-| Symptom | Look at |
-|---|---|
-| No sync at all, black screen | Is the analog IO board fitted? Is `VGA_DISABLE` still 0? Does HDMI work (proves the core is running)? |
-| Rolls vertically | VSync width or position. Both are inside blanking and correct on paper: NTSC blanks 20 lines wrapping `254..262` + `0..12` with VSync at `254..258`, PAL blanks `0..20` with VSync at `0..4`. So suspect the *width* first — 4 lines each, where NTSC broadcast wants 3 equalising + 3 serration + 3 equalising. A display that wants proper serrated vertical sync will roll on a plain 4-line pulse. The framework can synthesise composite sync for you — `module csync` lives in `sys/sys_top.v` (~line 1914) and is instantiated for both VGA and HDMI; it is enabled by the **`composite_sync=1`** option in `MiSTer.ini`, not by anything in this core. Try that before editing any timing. |
-| Tears / no horizontal lock | HSync width and porch split. Ours are an even 4.54/4.54/4.54; Fig 6 wants 3.14/4.57/3.43. Try matching Fig 6 exactly. |
-| Locks but the picture sits far off-centre | Expected to a degree — see "the one known deviation". Adjust the porches, never the bitmap. |
-| Picture but wrong colours | That is not analog-specific; check the machine selection in the OSD first. |
-| Only works with the scandoubler on | The display probably cannot do 15 kHz. That is a display limit, not a core bug. |
+No physical analog result is recorded here. The following is a test procedure,
+not a report of successful output:
 
-### What to change, and where
+1. Use a current build produced with the supported Quartus 17.0.x toolchain.
+   Record the source revision and build used.
+2. Start with a suitable native 15 kHz analog connection, forced scandoubling
+   off, Borders On, crop off, and the on-screen keypad off.
+3. Test Studio II, Studio III NTSC, Studio III PAL, and Visicom. Record sync
+   stability, bitmap placement, visible border, and palette/background behaviour.
+4. Toggle Borders. Confirm the active area changes while sync remains stable.
+5. Exercise CLEAR, firmware/cartridge/CHIP-8 loads where supported, and
+   same-standard Apply. Check that sync is retained. Separately test PAL/NTSC
+   switching and record resync behaviour.
+6. Repeat with forced scandoubling on a compatible VGA display, then with
+   Direct Video and a compatible converter. Test the 1080p crop separately,
+   including any simultaneous analog output.
 
-Everything is in the two `localparam` blocks at the top of
-`rtl/pixie/cdp1861.v` and `rtl/pixie/cdp1864.v`. Changing them **cannot** move
-any recorded score, because the harness captures `bitmap_de` rather than the
-raster — that separation exists exactly so raster work is safe. After any change:
+For failure diagnosis, first establish the display's supported timing, cable,
+converter, and relevant `MiSTer.ini` settings. For sync problems, record or
+measure HS/VS and the configured composite-sync output before changing the
+core. For horizontal displacement, compare against the implemented 16/8 border
+split. For unexpected colours, check the active machine, loaded palette, and
+software colour-enable state.
 
-```sh
-cd verilator && make lint && rm -rf obj_dir_headless && make headless
-cd .. && python3 tools/game-start-sweep.py --run --machine visicom
-```
+## Automated coverage and recording results
 
-The old `visicom-test.sh` corpus runner is disabled. The game-start sweep needs
-visual review and does not replace a directed video test. Inspect captures for
-the exact bitmap, DMA, raster, or palette property changed.
+The headless harness captures `bitmap_de`, not the surrounding active raster,
+and instantiates `rcastudioii` rather than `Studio-II.sv`. Bitmap captures do
+not verify top-level resampling, mixer/scandoubler operation, crop, analog
+levels, or physical display lock. Simulation can inspect raster signals with
+directed checks; it is incorrect to say the raster cannot be tested at all.
 
----
+Capture separation also does not make arbitrary timing changes harmless:
+DMA, interrupt/EF timing, frame boundaries, and software execution can change
+captured results. Any timing change needs directed checks of the affected
+signals and relevant bitmap/gameplay regressions. Use the `--ce4` harness mode
+for reset and CPU/DMA phase work. Simulation success does not replace an FPGA
+build or physical analog verification.
 
-## 4. Recording the result
+This documentation update was checked against source only; no synthesis,
+Verilator build, regression run, or display test was performed.
 
-Record the durable outcome in this file with the display type and `MiSTer.ini`
-settings used, then update the verification summary in `docs/development.md`.
+After hardware testing, record the build/revision, machine and firmware,
+display/converter and connection, relevant `MiSTer.ini` and OSD settings, sync
+stability, bitmap placement, border behaviour, and reset results here. Update
+the video summary in [development.md](development.md) when those results change
+its stated behaviour or verification status.

@@ -100,7 +100,7 @@ static BYTE8 keyboardLatch;                                                     
 //  64 colour cells, not 256. The board decodes six address lines, so $B00-$BFF is
 //  the same 64 bytes mirrored four times -- which is why MAME maps $0B00-$0B3F
 //  (the storage) and Emma 02 declares $0B00-$0BFF (the decoded window) without
-//  the two actually disagreeing.  See docs/succession-plan.md §6.
+//  the two actually disagreeing.
 //
 //  The cell for a display byte is {off[7:5], off[2:0]}: the low three bits are
 //  the column (8 bytes across a 64 pixel row) and off[7:5] the row group, so one
@@ -242,10 +242,9 @@ static BOOL CPU_LoadST2Image(FILE *f)
 }
 
 //  Load a system ROM flat at $0000, replacing the Studio II BIOS this program
-//  carries embedded. Needed for the colour machines: the Studio III / MPT-02
-//  BIOS is a different image (refs/emma_02/data/StudioIII/studio3_{ntsc,pal}.bin,
-//  data/Victory/victory.rom), and without it a Studio III cartridge just shows a
-//  blank frame. Call after CPU_Reset(), which is what copies the embedded BIOS in.
+//  carries embedded. The colour machines require their own BIOS image; without
+//  it a Studio III cartridge shows a blank frame. Call after CPU_Reset(), which
+//  is what copies the embedded BIOS in.
 
 void CPU_LoadBios(char *fileName)
 {

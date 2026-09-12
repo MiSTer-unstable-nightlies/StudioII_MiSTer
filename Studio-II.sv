@@ -191,8 +191,7 @@ assign HDMI_FREEZE = 0;
 assign HDMI_BLACKOUT = 0;
 assign HDMI_BOB_DEINT = 0;
 
-// Signed beeper/tone sample generated in rcastudioii.sv. The Studio II/Visicom
-// NE555 path includes release envelope; Studio III is a fixed-level square wave.
+// Signed audio sample generated in rcastudioii.sv
 wire signed [15:0] audio;
 assign AUDIO_S   = 1'b1;                                   // signed samples
 assign AUDIO_MIX = 2'd0;
@@ -207,13 +206,11 @@ assign BUTTONS = 0;
 localparam CONF_STR = {
 	"Studio-II;v11;",
 	"F1,ST2BIN,Load Cartridge;",
-	// Main sends chip8.bin from same dir as selected .ch8 before F3
-	"f,!chip8.bin;",
-	// CHIP-8 data can be preloaded regardless of the active machine.
+	// CHIP-8 data can be preloaded regardless of the active machine
 	"F3,CH8,Load CHIP-8;",
 	"-;",
 	"F2,BINROM,Load Firmware;",
-	"F4,BIN,Load CHIP-8 Interpreter;",
+	"F4,BINROM,Load CHIP-8 Interpreter;",
 	"-;",	
 	// Machine held until Apply
 	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
@@ -221,7 +218,7 @@ localparam CONF_STR = {
 	"-;",
 	"O[6],Mapping,Auto,Manual;",
 	// Order must match localparams in rtl/rcastudioii.sv
-	"D2O[5:2],Joystick,None,Cross,Space War,Freeway,Bowling,Baseball,Homebrew,Visicom Art,8-way,Doodle,2P Homebrew,Race,Gunfighter/Tennis,CHIP-8,Climber/Outbreak,Space Explorer;",
+	"D2O[5:2],Joystick,None,4-way,Space War,Freeway,Bowling,Baseball,Robson,Visicom Art,8-way,Art,Robson2P,Race,Gunfighter/Tennis,CHIP-8,Climber/Outbreak,Space Explorer;",
 	"O[8:7],Players,Auto,1,2;",
 	"O[10:9],Numstick,Off,Pad A,Pad B;",
 	"-;",
@@ -253,7 +250,7 @@ wire forced_scandoubler;
 wire  [21:0] gamma_bus;
 wire   [1:0] buttons;
 wire [127:0] status;
-// Menu mask to gray-out/disable OSD options
+// Gray-out OSD options
 wire  [15:0] status_menumask;
 wire  [10:0] ps2_key;
 wire  [31:0] joystick_0, joystick_1;
@@ -266,10 +263,9 @@ wire signed [15:0] audio_out = status[16] ? 16'sd0 : audio;
 assign AUDIO_L = audio_out;
 assign AUDIO_R = audio_out;
 
-// Pixie's timing generator is kept running which is
-// friendlier to display sync. TODO: This is very useful but 
-// still a hack and may need further scrutiny or refinement
-// in the future. ~elle
+// NOTE: this is a hack to keep video alive and prevent HDMI resync 
+// this mostly works fine but you might get an occasional glitch
+// ~elle
 reg clear_key = 1'b0;
 always @(posedge clk_sys) begin
 	reg old_stb;
@@ -326,8 +322,8 @@ pll pll
 	.outclk_1(clk_vid)
 );
 
-// The CDP1861 emits one pixel per CPU clock: 1.7897725 MHz nominal, 1.760229 MHz
-// here (clk_sys/4). TODO: A point of potential accuracy improvement.
+// One pixel per 1802 clock
+// 1.7897725 MHz nominal versus core's 1.760229 MHz (clk_sys/4).
 reg [1:0] ce_cnt = 2'd0;
 always @(posedge clk_sys) ce_cnt <= ce_cnt + 2'd1;
 wire ce_pix = (ce_cnt == 2'd0);
@@ -336,11 +332,7 @@ wire ce_pix = (ce_cnt == 2'd0);
 wire joy_clear = joystick_0[7] | joystick_1[7];
 wire clear_request = status[1] | clear_key | joy_clear;
 
-// Preserve raster timing on soft resets. F5/F6 are presentation-only palette
-// loads and must not reach the machine loader or otherwise disturb the
-// emulated machine.
-// Keep the classification for the whole transaction: Main may update the live
-// file index while replacing one selection, before download has gone inactive.
+// Preserve video timing on soft resets
 reg       vis_palette_latched = 1'b0;
 reg       studio_palette_latched = 1'b0;
 wire      vis_palette_index = ioctl_index[5:0] == 6'd5;
@@ -439,9 +431,7 @@ always @(posedge clk_sys) begin
 	else if (mach_reset_cnt != 0) mach_reset_cnt <= mach_reset_cnt - 8'd1;
 end
 
-// Standard crossing must be hard from the initiating Apply edge, before
-// stretched classification latch can become visible. Latch then retains it
-// after machine_active changes and apply_crossing_now drops.
+// prevent issues with machine switch
 wire apply_hard_reset = (status[15] && apply_crossing_now) || (apply_reset && apply_video_hard);
 wire apply_soft_reset = apply_reset && !apply_hard_reset;
 
@@ -460,9 +450,9 @@ wire VBlank;
 wire VSync;
 wire bitmap_hblank;
 wire bitmap_vblank;
-wire [2:0] video;   	// {R,G,B} from the core
-wire       video_bg;    // ...at background luminance (CDP1864 BCKGND)
-wire [1:0] vis_index;   // Visicom: one of its four fixed colours
+wire [2:0] video;   	// R,G,B
+wire       video_bg;    // CDP1864 BCKGND
+wire [1:0] vis_index;   // Visicom
 
 rcastudioii rcastudio
 (
@@ -507,13 +497,6 @@ rcastudioii rcastudio
 );
 
 ////////////////// Joystick profile -> OSD ///////////////////////////////////
-//
-// On Auto, the core's CRC/built-in-game detection owns the Joystick row and the
-// menu is made to agree with it: hps_io's status_set hands the HPS a whole new
-// status word, so writing the detected profile into bits [5:2] is what makes the
-// OSD read the combined "Gunfighter/Tennis" profile after either is loaded. On
-// Manual nothing is written, so the row holds the last detected profile and the
-// user edits from there rather than from a stale selection.
 
 wire [3:0]   auto_profile;
 reg  [127:0] status_in;
@@ -529,17 +512,12 @@ always @(posedge clk_sys) begin
 	auto_d     <= auto_profile;
 	manual_d   <= status[6];
 
-	// Schedule exactly one write on initial Auto mode, a new detection, or a
-	// Manual-to-Auto transition. Do not test whether the row is stale here: that
-	// would reload the delay on every clock and prevent the write from firing.
-	// Gated by !boot_follow so initial status writeback only happens after Main
-	// has delivered saved settings.
+	// wait for !boot_follow to avoid user settings overwrite
 	if (!boot_follow && ((!auto_sync_done && !status[6]) || (auto_profile != auto_d) ||
 	    (manual_d && !status[6]))) begin
 		auto_sync_done <= 1'b1;
 		push_pending <= 1'b1;
-		// ~0.3 s at 7.04 MHz. map_profile only settles when the transfer ends,
-		// and the HPS is busy with the download until then, so let it finish.
+		// let HPS finish first
 		push_dly     <= 22'd2000000;
 	end
 	else if (|push_dly) begin
@@ -552,22 +530,13 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// D2 disables the manual Joystick row while Mapping is Auto. D4 disables NE555
-// tuning on the Studio III machines. D5 enables the NTSC tone-pitch selector
-// only on the Studio III NTSC. d6 enables 216p crop controls only for
-// un-doubled 1080p. Loaders remain available regardless of the active machine:
-// their data is retained until the corresponding hardware path uses it.
-// Use machine_active so a staged selection does not take effect before Apply
-// and reset.
 assign status_menumask = ((!status[6]) ? 16'h0004 : 16'h0000) |
 	                     (((machine_active == 2'd1) ||
 	                       (machine_active == 2'd2)) ? 16'h0010 : 16'h0000) |
 	                     ((machine_active != 2'd2) ? 16'h0020 : 16'h0000) |
 	                     (en216p ? 16'h0040 : 16'h0000);
 
-// The scaler can't handle the very low res native raster. So the video
-// chain runs on the PLL's 42.24 MHz output and samples the core's pixel 
-// stream at 7.04 MHz. Each 1861 pixel (88) is repeated 4x to 352 wide.
+// resample 88 wide 4x to 352 for scaler
 assign CLK_VIDEO = clk_vid;
 
 reg  [2:0] ce_vid_cnt = 3'd0;
@@ -577,15 +546,10 @@ always @(posedge clk_vid) begin
 	ce_pix_vid <= (ce_vid_cnt == 3'd5);
 end
 
-// 1-bit {R,G,B} per channel to mirror the CDP1864's three
-// colour pins. The Studio II's 1861 drives all three together.
-// BCKGND lowers the luminance of background pixels, so one colour can serve as
-// both background and data, see datasheet. Half scale here.
+// half scale 
 wire [7:0] vid_lvl = video_bg ? 8'h80 : 8'hFF;
 
-// Visicom's two colour planes produce a 2-bit hardware colour index. The
-// presentation-layer RGB mapping is replaceable without changing that hardware
-// emulation. These defaults use the balanced reference palette.
+// Visicom
 reg [23:0] vis_color0 = 24'h11320C;
 reg [23:0] vis_color1 = 24'h5A93D5;
 reg [23:0] vis_color2 = 24'hB9B43D;
@@ -594,9 +558,7 @@ reg [23:0] vis_color3 = 24'hD14C38;
 always @(posedge clk_sys) begin
 	if (vis_palette_download && ioctl_wr) begin
 		case (ioctl_addr)
-			// VCP and GBP both use lightest-to-darkest file order. Visicom
-			// hardware index 0 is the dark border/background colour, so the
-			// four RGB entries map to hardware indices 3, 2, 1, 0.
+			// map gbp in reverse
 			25'd0:  vis_color3[23:16] <= ioctl_data;
 			25'd1:  vis_color3[15:8]  <= ioctl_data;
 			25'd2:  vis_color3[7:0]   <= ioctl_data;
@@ -618,10 +580,6 @@ always @(posedge clk_sys) begin
 	end
 end
 
-// Studio II uses the standard GBP endpoints: colour 0 (lightest) for a set
-// PIXIE pixel and colour 3 (darkest) for a clear pixel. The two middle colours
-// remain part of the GBP file but are not used by the 1-bit display. The built-
-// in palette is ordinary white-to-black grayscale, preserving stock output.
 reg [127:0] studio_palette = 128'hFFFFFFAAAAAA55555500000000000000;
 
 always @(posedge clk_sys) begin
@@ -665,8 +623,6 @@ wire [15:0] osk_r = osk_use_j1 ? joystick_r_analog_1 : joystick_r_analog_0;
 wire [11:0] osk_press;
 wire  [7:0] osk_vr, osk_vg, osk_vb;
 
-// Border hiding changes only the presented active window. Device counters and
-// sync pulses keep running at their native timings, as in SMS_MiSTer.
 wire output_hblank = status[26] ? bitmap_hblank : HBlank;
 wire output_vblank = status[26] ? bitmap_vblank : VBlank;
 
@@ -703,22 +659,15 @@ numstick #(
 	.out_b    (osk_vb)
 );
 
-// numstick's one-hot runs bit0='1'..bit8='9', bit9='0'; reorder to key number.
+// numstick
 wire [9:0] osk_keys = {osk_press[8:0], osk_press[9]};
 wire [9:0] osk_a = (osk_mode == 2'd1) ? osk_keys : 10'd0;
 wire [9:0] osk_b = (osk_mode == 2'd2) ? osk_keys : 10'd0;
 
-// video_mixer gives analog outputs a scandoubler (15.7kHz native -> 31kHz when
-// forced) and the OSD gamma control; video_freak provides aspect ratio and the
-// integer scaling modes on top of the HDMI scaler.
 wire       vga_de;
 wire       freeze_sync;
 
-// Resample the clk_sys-domain pixel stream (numstick overlay included) into
-// the clk_vid domain. Plain registers: the clocks share a PLL, so this is an
-// ordinary timed path, and sampling at 42 MHz then presenting on the 7.04 MHz
-// enable repeats each source pixel 4x. LINE_LENGTH reserves the full 88-pixel
-// raster width (352 samples); Borders Off uses 256 of that capacity.
+// resample clk_sys into clk_vid domain
 reg [7:0] vmix_r, vmix_g, vmix_b;
 reg       vmix_hs, vmix_vs, vmix_hb, vmix_vb;
 always @(posedge clk_vid) begin
@@ -758,8 +707,7 @@ video_mixer #(.LINE_LENGTH(352), .GAMMA(1)) video_mixer
 
 wire [1:0] ar = status[122:121];
 
-// NES/SNES-style 216-line crop: at 1080p this permits an exact 5x vertical
-// scale. Other output modes retain the native 242/292-line raster window.
+// 5x 216p crop
 wire       vcrop_en = status[21];
 wire [3:0] vcopt    = status[25:22];
 reg        en216p = 1'b0;
@@ -770,8 +718,8 @@ always @(posedge CLK_VIDEO) begin
 	voff <= (vcopt < 4'd6) ? {vcopt, 1'b0} : ({vcopt, 1'b0} - 5'd24);
 end
 
-// Present VSync one output pixel later so DE falling edge and VSync 
-// rising edge are handled on separate enables.
+// VSync one pixel later so DE falling edge and VSync 
+// posedge are handled on separate enables
 reg vf_vs = 1'b0;
 always @(posedge CLK_VIDEO) begin
 	if (CE_PIXEL) vf_vs <= VGA_VS;
@@ -799,6 +747,6 @@ video_freak video_freak
     .SCALE({1'b0, status[12:11]})
 );
 
-assign LED_USER = 1'b0;   // was undriven
+assign LED_USER = 1'b0;
 
 endmodule

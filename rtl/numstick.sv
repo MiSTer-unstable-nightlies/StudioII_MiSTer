@@ -1,8 +1,6 @@
-// On-screen keypad driven by the analog sticks, ported from the Jaguar core
-// via ColecoAdam_MiSTer. Right stick pops up a 1-9 grid, left stick a single
-// "0" cell (the Studio II keypads are 0-9 only; the Adam original had * 0 #
-// on the left row). Hold a direction ~0.5s to press. keypad_press is one-hot:
-// bit0='1' .. bit8='9', bit9='0'; bits 10/11 (* and #) never assert here.
+// On-screen keypad 
+// by Kitrinx
+
 module numstick
 #(
 	parameter int HOLD_CYCLES        = 53000000,

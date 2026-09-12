@@ -42,8 +42,8 @@ module top(
    // Run the hardware's /4 pixel enable instead of the tied-high default.
    // The frame content is normally identical either way, but the phase between
    // cpu_ce and the pixie's counters is a real degree of freedom on hardware
-   // that ce_pix=1 never exercises -- the Visicom display-base rotation
-   // (2026-08-19) was invisible in sim until this existed. 4x slower.
+   // that ce_pix=1 cannot exercise. Use this for phase-sensitive behavior such
+   // as the Visicom display-base rotation. 4x slower.
    input ce_div4/*verilator public_flat*/
 );
    
@@ -91,13 +91,11 @@ wire signed [15:0] audio; // signed beeper/tone sample, including release envelo
 reg [1:0] ce_cnt = 2'd0;
 always @(posedge clk_48) ce_cnt <= ce_cnt + 2'd1;
 wire ce_pix = ce_div4 ? (ce_cnt == 2'd0) : 1'b1;
-// CLEAR, exactly as the FPGA top wires it: F3 (PS/2 0x04) sets clear_key,
-// which is folded into reset while also going to the core's clear_key input
-// so the pixie keeps running through it. The sim never modelled this: during
-// CLEAR the CPU's machine-cycle divider is held in reset while the pixie's
-// counters free-run, so the machine-cycle grid re-locks at an arbitrary
-// pixel phase on release -- a degree of freedom that only ever existed on
-// hardware until now (docs/handoff.md, 2026-08-19).
+// Match the FPGA's CLEAR path: F3 (PS/2 0x04) sets clear_key, which is folded
+// into reset while also going to the core's clear_key input. The CPU's
+// machine-cycle divider resets while the pixie's counters free-run, so the
+// grid re-locks at an arbitrary pixel phase on release. Keep this path aligned
+// with Studio-II.sv so that hardware phase freedom remains reproducible.
 reg clear_key = 1'b0;
 always @(posedge clk_48) begin
 	reg old_clrstb;

@@ -24,10 +24,10 @@
 # (INVERSE)" and "Q gates sound output", so a larger latch must give a *lower*
 # frequency, and nothing should come out at all while Q is low. Both checked.
 # ---------------------------------------------------------------------------
-set -uo pipefail
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RTL="$ROOT/verilator/obj_dir_headless/Vtop"
+RTL="${HEADLESS_SIM:-$ROOT/verilator/obj_dir_headless/Vtop}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 [[ -x "$RTL" ]]   || { echo "error: build the RTL sim: (cd verilator && make headless)" >&2; exit 1; }
@@ -71,20 +71,21 @@ measure() {  # $1 = firmware image, $2 = machine, remaining args = sim options
     local firmware="$1" machine="$2"
     shift 2
     "$RTL" --machine "$machine" --bios "$firmware" "$@" \
-      --frames "$FRAMES" --trace-q --quiet 2>/dev/null \
+      --frames "$FRAMES" --trace-q --quiet \
       | awk -v tot="$FRAMES" '
           function cnt(x) { gsub(/[()]/,"",x); return x+0 }
           /^Q 1 frame/ { on=$4+0; e0=cnt($9); seen=1; closed=0 }
           /^Q 0 frame/ { if (seen) { de=cnt($9)-e0; df=$4+0-on; closed=1 } }
-          /^audio:/    { if (seen && !closed) { de=$2-e0; df=tot-on } }
-          END          { if (seen) print de, df; else print 0, 0 }'
+          /^audio:/    { audio_seen=1; if (seen && !closed) { de=$2-e0; df=tot-on } }
+          END          { if (!audio_seen) exit 2; if (seen) print de, df; else print 0, 0 }'
 }
 
 fail=0
 check() {   # $1 = latch
     local latch="$1" edges nframes hz want dev
     build "$latch" "$TMP/t.bin" 1
-    read -r edges nframes <<<"$(measure "$TMP/t.bin" mpt02)"
+    measurement=$(measure "$TMP/t.bin" mpt02)
+    read -r edges nframes <<<"$measurement"
     # frames -> seconds, edges -> half-cycles, so Hz = edges / 2 / seconds
     read -r hz want dev <<<"$(python3 - "$edges" "$latch" "$nframes" "$CLK" <<'EOF'
 import sys
@@ -111,9 +112,12 @@ for l in 1 15 53 127 255; do check "$l"; done
 # times PAL for the same latch, while the OSD's lower setting selects that
 # existing stage and must match PAL.
 build 53 "$TMP/ratio.bin" 1
-read -r pal_edges pal_frames <<<"$(measure "$TMP/ratio.bin" mpt02)"
-read -r ntsc_edges ntsc_frames <<<"$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch original)"
-read -r low_edges low_frames <<<"$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch pal)"
+measurement=$(measure "$TMP/ratio.bin" mpt02)
+read -r pal_edges pal_frames <<<"$measurement"
+measurement=$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch original)
+read -r ntsc_edges ntsc_frames <<<"$measurement"
+measurement=$(measure "$TMP/ratio.bin" studio3ntsc --ntsc-tone-pitch pal)
+read -r low_edges low_frames <<<"$measurement"
 read -r pal_hz ntsc_hz low_hz native_ratio low_ratio native_ok low_ok <<<"$(
 python3 - "$pal_edges" "$pal_frames" "$ntsc_edges" "$ntsc_frames" \
           "$low_edges" "$low_frames" "$CLK" <<'EOF'
@@ -147,7 +151,8 @@ fi
 
 # Q low must silence it outright -- AOE holds AUDIO OUT low (datasheet p5).
 build 53 "$TMP/q.bin" 0
-read -r edges _ <<<"$(measure "$TMP/q.bin" mpt02)"
+measurement=$(measure "$TMP/q.bin" mpt02)
+read -r edges _ <<<"$measurement"
 if [[ "$edges" == "0" ]]; then
     echo "  ok    Q low: silent (0 edges)"
 else
@@ -163,8 +168,10 @@ fi
 # the *same* frequency, because neither reaches the beeper.
 build 1   "$TMP/s2a.bin" 1
 build 255 "$TMP/s2b.bin" 1
-read -r a af <<<"$(measure "$TMP/s2a.bin" studio2)"
-read -r b bf <<<"$(measure "$TMP/s2b.bin" studio2)"
+measurement=$(measure "$TMP/s2a.bin" studio2)
+read -r a af <<<"$measurement"
+measurement=$(measure "$TMP/s2b.bin" studio2)
+read -r b bf <<<"$measurement"
 ahz=$(python3 -c "f=$af; print(round(($a/2)/(f*(112*262)/$CLK),1) if f else 0)")
 bhz=$(python3 -c "f=$bf; print(round(($b/2)/(f*(112*262)/$CLK),1) if f else 0)")
 same=$(python3 -c "

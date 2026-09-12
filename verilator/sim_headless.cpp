@@ -40,12 +40,22 @@
 #define ROM2      (top->rootp->top__DOT__rcastudio__DOT__rom2__DOT__mem)
 #define ROM3      (top->rootp->top__DOT__rcastudio__DOT__rom3__DOT__mem)
 #define ROM4      (top->rootp->top__DOT__rcastudio__DOT__rom4__DOT__mem)
+#define CHIP8RAM  (top->rootp->top__DOT__rcastudio__DOT__chip8_ram__DOT__mem)
 #define SRAM      (top->rootp->top__DOT__rcastudio__DOT__sram__DOT__mem)    // the 512 bytes of RAM, $0800-$09FF
 #define COLRAM    (top->rootp->top__DOT__rcastudio__DOT__colour_ram)         // 64 CDP1864 colour cells
 
 static Vtop* top = nullptr;
 static vluint64_t main_time = 0;
 double sc_time_stamp() { return (double)main_time; }
+
+static auto& cart_memory(int slot) {
+    switch (slot) {
+        case 0: return RS(cart0__DOT__mem);
+        case 1: return RS(cart1__DOT__mem);
+        case 2: return RS(cart2__DOT__mem);
+        default: return RS(cart3__DOT__mem);
+    }
+}
 
 static uint8_t rom_byte(int slot, int addr) {
     switch (slot) {
@@ -82,13 +92,13 @@ static std::vector<uint8_t> read_binary(const std::string& path) {
 }
 
 // Apply one cartridge image to an expected ROM image and return its final
-// $08-$0F page-ownership mask. This mirrors the RTL loader closely enough to
+// $00-$0F page-ownership mask. This mirrors the RTL loader closely enough to
 // check sequential downloads without treating stale BRAM bytes as visible ROM.
-static uint8_t apply_cart_image(std::vector<uint8_t>& rom, const std::string& path, int machine) {
+static uint16_t apply_cart_image(std::vector<uint8_t>& rom, const std::string& path, int machine) {
     const std::vector<uint8_t> data = read_binary(path);
     const bool st2 = data.size() >= 4 && data[0] == 'R' && data[1] == 'C' &&
                      data[2] == 'A' && data[3] == '2';
-    uint8_t pages = 0;
+    uint16_t pages = 0;
 
     for (size_t i = 0; i < data.size(); i++) {
         size_t addr;
@@ -123,9 +133,12 @@ static uint8_t apply_cart_image(std::vector<uint8_t>& rom, const std::string& pa
 
         if (!write) continue;
         rom[addr] = data[i];
-        bool claim = (addr & 0x800) && (machine == 3 || (addr & 0x600));
+        unsigned page = addr >> 8;
+        bool claim = machine == 3 ? page >= 8 :
+            page >= 4 && page != 8 && page != 9 &&
+            !((machine == 1 || machine == 2) && page == 0x0b);
         bool format_known = st2 ? i >= 0x100 : i >= 3;
-        if (claim && format_known) pages |= (uint8_t)(1u << ((addr >> 8) & 7));
+        if (claim && format_known) pages |= (uint16_t)(1u << page);
     }
     return pages;
 }
@@ -144,6 +157,22 @@ static uint8_t read_cpu_bus(uint16_t addr) {
     top->clk_48 = 0;
     top->eval();
     return data;
+}
+
+// Execute one STR R1 cycle with D as the write byte. As with read_cpu_bus(),
+// this deliberately uses the CPU-facing bus instead of changing a memory
+// array directly, so the test covers the real decode and write-enable path.
+static void write_cpu_bus(uint16_t addr, uint8_t data) {
+    top->clk_48 = 0;
+    CPU(state) = 2;       // EXECUTE
+    CPU(IR) = 0x51;       // STR R1
+    CPU(R)[1] = addr;
+    CPU(D) = data;
+    top->eval();
+    top->clk_48 = 1;
+    top->eval();
+    top->clk_48 = 0;
+    top->eval();
 }
 
 // ---------------------------------------------------------------------------
@@ -221,10 +250,8 @@ static bool write_ppm(const std::string& path, int w, int h, const std::vector<u
 static const int MAX_W = 2048;
 static const int MAX_H = 1024;
 
-// {R,G,B} -> one character. Black is a space and white is '#', exactly as the
-// pre-colour harness printed them, so every Studio II capture and the whole §9
-// comparison is byte-identical. The six chromatic values only ever
-// appear on a CDP1864 machine, and get their initials.
+// {R,G,B} -> one character. Preserve space/black and #/white so existing Studio
+// II ASCII baselines remain byte-identical. Colour-machine values use initials.
 static inline char ascii_for(uint8_t rgb) {
     switch (rgb & 7) {
         case 0: return ' ';   // black
@@ -251,8 +278,7 @@ struct FrameGrabber {
 
     // Returns true on the clock where a frame boundary was crossed.
     // `rgb` is {R,G,B}, one bit per channel, matching the core's video output.
-    // The Studio II is monochrome so only 0 and 7 ever occur, which is what
-    // keeps the ASCII output byte-identical to the pre-colour harness.
+    // Studio II emits only black and white; colour machines can use all eight.
     bool clock(bool vs, bool hs, bool de, uint8_t rgb) {
         bool boundary = false;
 
@@ -514,8 +540,8 @@ static void usage(const char* argv0) {
 "  Software\n"
 "    --bios FILE          BIOS image, ioctl index 0   (default ../rom/studio2.rom)\n"
 "    --cart FILE          cartridge image, ioctl index 1 (raw: Studio $0400, Visicom $0800)\n"
-"    --chip8-fw FILE      Marcel's 768-byte companion, ioctl index $0103\n"
-"    --manual-chip8-fw FILE  same image through the F4 OSD path, ioctl index 4\n"
+"    --chip8-fw FILE      768-byte Marcel or 2 KiB OpenStudio2 companion, index $0103\n"
+"    --manual-chip8-fw FILE  same interpreter choices through the F4 OSD path, index 4\n"
 "    --ch8 FILE           CHIP-8 program, ioctl index 3\n"
 "    --loader-check       verify ROM loading, CHIP-8 mapping and firmware profiles\n"
 "\n"
@@ -551,9 +577,9 @@ static void usage(const char* argv0) {
 "\n"
 "  Input\n"
 "    --joy-map N          OSD \"Joystick\" profile, and switch \"Mapping\" to Manual:\n"
-"                         0 none/keypad-only, 1 cross, 2 spacewar, 3 freeway,\n"
-"                         4 bowling, 5 baseball, 6 homebrew, 7 Visicom Art,\n"
-"                         8 8-way, 9 doodle, 10 2P homebrew, 11 Race,\n"
+"                         0 none/keypad-only, 1 4-way, 2 spacewar, 3 freeway,\n"
+"                         4 bowling, 5 baseball, 6 Robson, 7 Visicom Art,\n"
+"                         8 8-way, 9 Art, 10 Robson2P, 11 Race,\n"
 "                         12 Gunfighter/Tennis, 13 CHIP-8, 14 Climber/Outbreak,\n"
 "                         15 Space Explorer. Omit for auto-detection.\n"
 "    --joy MASK@F[:H]     drive joystick 0 with MASK (bit0 right, 1 left, 2 down,\n"
@@ -619,8 +645,8 @@ int main(int argc, char** argv) {
     uint32_t joy_mask = 0; long joy_from = -1, joy_to = -1;
     uint32_t joy2_mask = 0; long joy2_from = -1, joy2_to = -1;
     std::string swap_file; long swap_frame = -1; bool swap_done = false;
-    // Mid-run firmware load and machine switch, to replay the OSD flow of
-    // switching machines on a running core (docs/handoff.md, 2026-08-19).
+    // Mid-run firmware load and machine switch replay the OSD flow on a
+    // running core.
     std::string swap0_file; long swap0_frame = -1; bool swap0_done = false;
     uint8_t  machine_at = 0; long machine_at_frame = -1; bool machine_at_done = false;
     uint8_t  joy_override = 0;   // applied once top exists
@@ -835,21 +861,22 @@ int main(int argc, char** argv) {
     top->ps2_key = 0; top->inputs = 0;
     top->eval();
 
-    // Give the loader check a known background in every slot. It can then
+    // Preserve bundled rom4; give native slots a known background to
     // prove both positive routing and that rejected/unsupported bytes did not
     // modify any destination.
-    if (loader_check)
-        for (int slot = 0; slot < 5; slot++)
+    if (loader_check) {
+        for (int slot = 0; slot < 4; slot++)
             for (int addr = 0; addr < 0x1000; addr++)
                 set_rom_byte(slot, addr, 0xA5);
+        for (int slot = 0; slot < 4; slot++)
+            for (int addr = 0; addr < 0x1000; addr++)
+                cart_memory(slot)[addr] = 0xA5;
+        for (int addr = 0; addr < 0x1000; addr++) CHIP8RAM[addr] = 0xA5;
+    }
 
-    // Pre-fill the RAM arrays with junk before the machine boots. On hardware
-    // the 512-byte RAM (and the Visicom's plane-1 RAM) is wiped only by CLEAR:
-    // it survives firmware/cartridge loads and OSD machine switches, so a
-    // Visicom booted after a Studio II session starts with the Studio II's
-    // leftovers. The sim's arrays start zeroed, which hid the Visicom
-    // display-base rotation (docs/handoff.md, 2026-08-19). A simple xorshift
-    // keyed by --ram-junk SEED makes that difference reproducible.
+    // Hardware RAM is wiped only by CLEAR and survives loads and machine
+    // switches. Verilator starts arrays at zero, so --ram-junk uses a seeded
+    // xorshift to expose behavior that depends on uncleared RAM.
     if (ram_junk_seed) {
         uint32_t s = ram_junk_seed;
         auto nxt = [&s]() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return (uint8_t)s; };
@@ -1054,29 +1081,63 @@ int main(int argc, char** argv) {
         cycles++;
     }
 
+    if (loader_check && (!io.finished || io.active || (swap_frame >= 0 && !swap_done))) {
+        fprintf(stderr, "error: loader check stopped before downloads completed\n");
+        top->final();
+        if (df != stdout) fclose(df);
+        delete top;
+        return 2;
+    }
+
     if (loader_check) {
         std::vector<std::vector<uint8_t>> expected(5, std::vector<uint8_t>(0x1000, 0xA5));
         const std::vector<uint8_t> bios_data = read_binary(bios);
         for (size_t i = 0; i < bios_data.size() && i < 0x1000; i++) expected[machine][i] = bios_data[i];
 
-        uint8_t expected_pages = 0;
-        if (!cart.empty()) expected_pages = apply_cart_image(expected[machine], cart, machine);
-        if (!swap_file.empty()) expected_pages = apply_cart_image(expected[machine], swap_file, machine);
+        std::vector<std::vector<uint8_t>> expected_cart(4, std::vector<uint8_t>(0x1000, 0xA5));
+        uint16_t expected_pages = 0;
+        if (!cart.empty()) expected_pages = apply_cart_image(expected_cart[machine], cart, machine);
+        if (!swap_file.empty()) expected_pages = apply_cart_image(expected_cart[machine], swap_file, machine);
 
-        bool fw_valid = false;
+        // Verify the initialized bank against the same image used by the build.
+        expected[4].assign(0x1000, 0);
+        FILE* bundled = fopen(OS2_INIT_FILE, "r");
+        if (!bundled) {
+            fprintf(stderr, "error: cannot open bundled interpreter\n");
+            return 2;
+        }
+        unsigned byte;
+        size_t count = 0;
+        while (count < 0x1000 && fscanf(bundled, "%2x", &byte) == 1)
+            expected[4][count++] = static_cast<uint8_t>(byte);
+        const bool exact_image = count == 0x1000 && fscanf(bundled, "%x", &byte) == EOF;
+        fclose(bundled);
+        if (!exact_image) {
+            fprintf(stderr, "error: bundled interpreter bank must contain 4096 bytes\n");
+            return 2;
+        }
+        bool fw_valid = true;
+        bool fw_os2 = true;
         if (!chip8_fw.empty()) {
             const std::vector<uint8_t> fw_data = read_binary(chip8_fw);
-            for (size_t i = 0; i < fw_data.size() && i < 0x300; i++) expected[4][i] = fw_data[i];
+            for (size_t i = 0; i < fw_data.size() && i < 0x800; i++) expected[4][i] = fw_data[i];
             fw_valid = fw_data.size() >= 0x300;
+            fw_os2 = fw_data.size() >= 0x800;
         }
 
         bool ch8_accepted = fw_valid && (machine != 3) && !ch8.empty();
+        std::vector<uint8_t> expected_chip8_ram(0x1000, 0xA5);
         if (!ch8.empty()) {
             const std::vector<uint8_t> ch8_data = read_binary(ch8);
             if (ch8_accepted) {
-                for (size_t i = 0; i < ch8_data.size() && i < 0x900; i++) {
-                    size_t addr = (i < 0x500) ? (0x300 + i) : (0xC00 + i - 0x500);
-                    expected[4][addr] = ch8_data[i];
+                if (fw_os2) {
+                    for (size_t i = 0; i < ch8_data.size() && i < 0xE00; i++)
+                        expected_chip8_ram[0x200 + i] = ch8_data[i];
+                } else {
+                    for (size_t i = 0; i < ch8_data.size() && i < 0x900; i++) {
+                        size_t addr = (i < 0x500) ? (0x300 + i) : (0xC00 + i - 0x500);
+                        expected[4][addr] = ch8_data[i];
+                    }
                 }
             }
             ch8_accepted = ch8_accepted && !ch8_data.empty();
@@ -1094,9 +1155,34 @@ int main(int argc, char** argv) {
                 }
             }
         }
+        for (int slot = 0; slot < 4; slot++) {
+            for (int addr = 0; addr < 0x1000; addr++) {
+                uint8_t got = cart_memory(slot)[addr];
+                if (got != expected_cart[slot][addr]) {
+                    if (failures < 12)
+                        printf("FAIL cart%d[$%03X] = %02X, expected %02X\n",
+                               slot, addr, got, expected_cart[slot][addr]);
+                    failures++;
+                }
+            }
+        }
+        for (int addr = 0; addr < 0x1000; addr++) {
+            uint8_t got = CHIP8RAM[addr];
+            if (got != expected_chip8_ram[addr]) {
+                if (failures < 12)
+                    printf("FAIL chip8_ram[$%03X] = %02X, expected %02X\n",
+                           addr, got, expected_chip8_ram[addr]);
+                failures++;
+            }
+        }
         if ((RS(chip8_fw_loaded) != 0) != fw_valid) {
             printf("FAIL chip8_fw_loaded = %u, expected %u\n",
                    (unsigned)RS(chip8_fw_loaded), fw_valid ? 1u : 0u);
+            failures++;
+        }
+        if ((RS(chip8_fw_os2) != 0) != fw_os2) {
+            printf("FAIL chip8_fw_os2 = %u, expected %u\n",
+                   (unsigned)RS(chip8_fw_os2), fw_os2 ? 1u : 0u);
             failures++;
         }
         if ((RS(chip8_loaded) != 0) != ch8_accepted) {
@@ -1105,21 +1191,21 @@ int main(int argc, char** argv) {
             failures++;
         }
 
-        if ((uint8_t)RS(cart_page) != expected_pages) {
-            printf("FAIL cart_page = %02X, expected %02X\n",
+        if ((uint16_t)RS(cart_page) != expected_pages) {
+            printf("FAIL cart_page = %04X, expected %04X\n",
                    (unsigned)RS(cart_page), (unsigned)expected_pages);
             failures++;
         }
 
         // Visicom's resident half is always visible. Its cartridge half is
         // visible page by page, and an omitted page must return $FF even though
-        // a preceding cartridge's bytes remain physically present in ROM3.
+        // a preceding cartridge's bytes remain physically present in cart3.
         if (machine == 3) {
             for (int page = 0; page < 16; page++) {
                 for (int offset : {0x00, 0xff}) {
                     int addr = (page << 8) | offset;
-                    bool visible = page < 8 || (expected_pages & (1u << (page - 8)));
-                    uint8_t want = visible ? expected[3][addr] : 0xff;
+                    uint8_t want = page < 8 ? expected[3][addr] :
+                        (expected_pages & (1u << page)) ? expected_cart[3][addr] : 0xff;
                     uint8_t got = read_cpu_bus((uint16_t)addr);
                     if (got != want) {
                         printf("FAIL Visicom bus[$%03X] = %02X, expected %02X\n",
@@ -1129,6 +1215,93 @@ int main(int argc, char** argv) {
                 }
             }
         }
+
+        // Exercise all three CPU-visible memory maps regardless of which
+        // interpreter image this particular invocation downloaded. This keeps
+        // native Studio, Marcel, and OpenStudio2 decode behavior in one directed
+        // regression and covers OS2 writes through the actual CDP1802 bus.
+        const uint8_t saved_rom1_c00 = ROM1[0xC00];
+        const uint8_t saved_rom4_c00 = ROM4[0xC00];
+        const uint8_t saved_sram_000 = SRAM[0x000];
+        const uint8_t saved_sram_0bc = SRAM[0x0BC];
+        const uint8_t saved_os2_000 = CHIP8RAM[0x000];
+        const uint8_t saved_os2_abc = CHIP8RAM[0xABC];
+        ROM1[0xC00] = 0x31;
+        ROM4[0xC00] = 0x4D;
+        SRAM[0x000] = 0x58;
+        SRAM[0x0BC] = 0xBC;
+        CHIP8RAM[0x000] = 0x02;
+        CHIP8RAM[0xABC] = 0xAB;
+
+        auto select_chip8_map = [&](bool loaded, bool os2) {
+            top->machine = 1;  // Studio III also exercises its high-ROM decode
+            RS(chip8_fw_loaded) = loaded;
+            RS(chip8_fw_os2) = os2;
+            RS(chip8_loaded) = loaded;
+            top->eval();
+        };
+        auto expect_bus = [&](uint16_t addr, uint8_t want, const char* name) {
+            uint8_t got = read_cpu_bus(addr);
+            if (got != want) {
+                printf("FAIL %s bus[$%04X] = %02X, expected %02X\n",
+                       name, addr, got, want);
+                failures++;
+            }
+        };
+
+        select_chip8_map(false, false);
+        expect_bus(0x0C00, 0x31, "native Studio III");
+        expect_bus(0x1000, 0x58, "native Studio III mirror");
+        if (RS(os2_ram_sel)) {
+            printf("FAIL native mode selected OpenStudio2 RAM\n");
+            failures++;
+        }
+
+        select_chip8_map(true, false);
+        expect_bus(0x0C00, 0x4D, "Marcel high ROM");
+        expect_bus(0x1000, 0x58, "Marcel Studio RAM mirror");
+        if (RS(os2_ram_sel) || !RS(chip8_marcel_active)) {
+            printf("FAIL Marcel mode selected the wrong CHIP-8 memory map\n");
+            failures++;
+        }
+        write_cpu_bus(0x1ABC, 0x6C);
+        if (CHIP8RAM[0xABC] != 0xAB) {
+            printf("FAIL Marcel write reached OpenStudio2 RAM\n");
+            failures++;
+        }
+
+        select_chip8_map(true, true);
+        expect_bus(0x0C00, 0x58, "OpenStudio2 suppressed high ROM");
+        expect_bus(0x1000, 0x02, "OpenStudio2 RAM base");
+        expect_bus(0x1ABC, 0xAB, "OpenStudio2 RAM body");
+        if (!RS(os2_ram_sel) || !RS(chip8_os2_active) || RS(chip8_marcel_active)) {
+            printf("FAIL OpenStudio2 mode selected the wrong CHIP-8 memory map\n");
+            failures++;
+        }
+        write_cpu_bus(0x1ABC, 0x6D);
+        if (CHIP8RAM[0xABC] != 0x6D || SRAM[0x0BC] != 0xBC) {
+            printf("FAIL OpenStudio2 CPU write did not stay in dedicated RAM\n");
+            failures++;
+        }
+
+        select_chip8_map(false, false);
+        write_cpu_bus(0x1ABC, 0x6E);
+        if (CHIP8RAM[0xABC] != 0x6D) {
+            printf("FAIL native write reached OpenStudio2 RAM\n");
+            failures++;
+        }
+
+        ROM1[0xC00] = saved_rom1_c00;
+        ROM4[0xC00] = saved_rom4_c00;
+        SRAM[0x000] = saved_sram_000;
+        SRAM[0x0BC] = saved_sram_0bc;
+        CHIP8RAM[0x000] = saved_os2_000;
+        CHIP8RAM[0xABC] = saved_os2_abc;
+        RS(chip8_fw_loaded) = fw_valid;
+        RS(chip8_fw_os2) = fw_os2;
+        RS(chip8_loaded) = ch8_accepted;
+        top->machine = machine;
+        top->eval();
 
         // With no cartridge, the first recognized firmware-menu key selects
         // the resident game's automatic profile and later keys must not change
@@ -1176,6 +1349,9 @@ int main(int argc, char** argv) {
         top->joystick_1 = 0;
         for (const FirmwareProfileCase& c : firmware_profiles) {
             top->machine = c.machine;
+            top->rootp->top__DOT__cart_unload = 1;
+            clock_core();
+            top->rootp->top__DOT__cart_unload = 0;
             RS(builtin_sel) = 0;
             RS(builtin_profile) = 0;
             RS(builtin_start_key) = 1;
@@ -1237,7 +1413,7 @@ int main(int argc, char** argv) {
         }
 
         // Start generates the default A1 selection and must also arm Visicom's
-        // resident Doodle profile, as it already does for the Studio menus.
+        // resident Art profile, as it already does for the Studio menus.
         RS(builtin_sel) = 0;
         RS(builtin_profile) = 0;
         RS(builtin_start_key) = 1;
@@ -1246,7 +1422,7 @@ int main(int argc, char** argv) {
         top->joystick_0 = 0;
         top->eval();
         if (!RS(builtin_sel) || (unsigned)RS(auto_profile) != 7u) {
-            printf("FAIL Visicom Start did not select the resident Doodle profile\n");
+            printf("FAIL Visicom Start did not select the resident Art profile\n");
             failures++;
         }
         top->joystick_0 = 1u << 6;
@@ -1588,11 +1764,12 @@ int main(int argc, char** argv) {
     printf("      last frame %dx%d, hash %08X, %s\n",
            fg.last_width, fg.last_height, fg.hash(),
            fg.blank() ? "BLANK (nothing was drawn)" : "has content");
-    if (cycles >= max_cycles) printf("      NOTE: stopped on --max-cycles\n");
+    const bool incomplete = fg.frame <= frames;
+    if (incomplete) fprintf(stderr, "error: simulation stopped before requested frames completed\n");
     if (!fg.complete)         printf("      WARNING: no complete frame was ever captured\n");
 
     top->final();
     if (df != stdout) fclose(df);
     delete top;
-    return 0;
+    return incomplete ? 2 : 0;
 }

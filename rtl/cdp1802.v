@@ -77,7 +77,7 @@ module cdp1802 (
   output              ram_wr,     // RAM write enable     // MWR_N
   output     [15:0]   ram_a,      // RAM address
   input      [7:0]    ram_q,      // RAM read data
-  output     [7:0]    ram_d      // RAM write data
+  output     [7:0]    ram_d       // RAM write data
 
 );
 
@@ -116,7 +116,6 @@ module cdp1802 (
 
 
   // ---------- RAM hookups ------------------------------
-  // SAV writes T; MARK writes the (X,P) it is capturing into T this same cycle.
   assign ram_d = (I == 4'h6)      ? io_din :
                  ({I, N} == 8'h78) ? T      :
                  ({I, N} == 8'h79) ? {X, P} : D;
@@ -126,10 +125,6 @@ module cdp1802 (
   reg sense;
   always @*
     casez ({I, N})
-      // The Cx ??00 row's base condition is IE when N3 is set (reference
-      // cosmac.vhdl cond_no_skip_p): that gives CC (LSIE) skip-if-IE, and C8
-      // the same silicon quirk the reference models (branch if IE=0, which
-      // with IE=1 -- the usual case -- degenerates to the documented LSKP).
       {4'h3, 4'b?000}:                  sense = 1;
       {4'hc, 4'b??00}:                  sense = N[3] ? IE : 1'b1;
       {4'h3, 4'b?001}, {4'hc, 4'b??01}: sense = Q;
@@ -141,37 +136,18 @@ module cdp1802 (
   wire take = sense ^ N[3];
 
   // ---------- interrupt / DMA arbitration ----------------------------
-  // The 1802 samples DMA and interrupt requests at a machine-cycle boundary, DMA first. INT_N is
-  // active low -- rcastudioii.sv drives it from ~INT -- so a request is INT_N == 0. The old code
-  // tested INT_N == 1'b1, which is why the interrupt was never taken even once it was uncommented.
-  // DMA outranks the interrupt, and both are only taken between instructions.
   wire int_pending = ~INT_N & IE;
   wire [3:0] next_cycle = dma_in_req  ? DMA_IN    :
                           dma_out_req ? DMA_OUT   :
                           int_pending ? INTERRUPT : FETCH;
 
   // ---------- fetch/interrupt/dma/execute ----------------------------
-  // state_n is assigned on every path: leaving DMA_IN/DMA_OUT unassigned inferred a latch.
   always @*
     case (state)
-    // A real 1802 honours DMA only between instructions -- fetch always
-    // proceeds to its execute (reference: cosmac.vhdl state_fetch, and MAME's
-    // cosmac). Stealing cycles between S0 and S1 shifted the DMA burst one
-    // machine cycle early relative to the instruction stream, which broke the
-    // BIOS ISR's cycle-counted display loop for some interrupt-entry phases:
-    // its GLO R0 sampled the row pointer before the line's burst instead of
-    // after, so R(0) never advanced and whole frames went dark (the homebrew
-    // "flicker", diagnosed on Space Invaders rev 2).
     FETCH:      state_n = EXECUTE;
     EXECUTE:
       casez ({I, N})
       8'h00:    state_n = IDLE;                       // IDL: hold until DMA or interrupt
-      // Cx splits on N2 (reference cosmac.vhdl): N2=0 is the long-branch family
-      // (taken loads the 2-byte target, untaken steps over it), N2=1 is the
-      // long-skip family (C4 NOP, C5-C7, CC-CF): 3 cycles that move P by 0 or
-      // 2 in total and never read the bytes. Treating the whole row as long
-      // branch sent C4 NOP through a taken branch -- Race executes C4 in its
-      // custom ISR and sailed into open bus.
       {4'hc, 4'b?1??}: state_n = LSKIP;               // long skip, second cycle next
       8'hc?:    state_n = take ? BRANCH3 : SKIP;      // long branch takes 3 cycles
       default:  state_n = next_cycle;                 // everything else is 2
@@ -210,7 +186,6 @@ module cdp1802 (
   localparam MEM_RD  = 2'b10;       // memory read strobe
   localparam MEM_WR  = 2'b01;       // memory write strobe
 
-  // Each case names the register it reads explicitly.
   always @*
     case (state)
     FETCH, SKIP:                    {action, Rwd} = {P, MEM_RD, R[P] + 16'd1};
@@ -326,19 +301,15 @@ module cdp1802 (
         if ((state == EXECUTE) && (I == 4'hc))
           B <= ram_q;   // long branch high byte
 
-        // MARK: T gets the (X,P) in force before X_n moves P into X.
         if ((state == EXECUTE) && ({I, N} == 8'h79))
           T <= {X, P};
 
-        // RET (70) and DIS (71) both pop (X,P) from M(R(X)); RET enables interrupts, DIS disables.
         if ((state == EXECUTE) && (I == 4'h7) && (N[3:1] == 3'b000)) begin
           X  <= ram_q[7:4];
           P  <= ram_q[3:0];
           IE <= ~N[0];
         end
 
-        // S3: the interrupt cycle saves (X,P) into T, then forces X=2, P=1 and masks further
-        // interrupts. The ISR's RET/DIS undoes this.
         if (state == INTERRUPT) begin
           T  <= {X, P};
           X  <= 4'd2;

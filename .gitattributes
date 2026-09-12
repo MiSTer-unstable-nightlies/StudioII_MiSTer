@@ -1,2 +1,5 @@
 # Quartus rewrites project settings with Windows line endings.
 *.qsf text eol=crlf
+
+# Preserve the bundled image's exact-file checksum on every checkout.
+rom/openstudio2.hex -text

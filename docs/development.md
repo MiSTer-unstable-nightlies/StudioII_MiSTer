@@ -1,8 +1,8 @@
 # Development reference
 
-Architecture, verification scope, and build mechanics live here. `AGENTS.md` contains 
-permanent repository rules. Current RTL defines what is implemented; primary 
-documentation and measured hardware define the target.
+Architecture, verification scope, and build mechanics here. `AGENTS.md` contains 
+permanent repository rules. RTL mostly speaks for itself; documentation and hardware 
+support it.
 
 Read the focused references when relevant:
 
@@ -149,9 +149,17 @@ The Machine OSD field is staged until **Apply and reset**, except for the short 
 | Studio III PAL | `boot1.rom` |
 | Studio III NTSC | `boot2.rom` |
 | Visicom | `boot3.rom` |
-| Marcel's CHIP-8 interpreter | F3 companion or F4 manual cache (`chip8.bin`) |
+| CHIP-8 interpreter | Bundled OpenStudio2; F4 manual override |
 
-Studio II firmware is normally 2 KB; each resident BRAM is 4 KB so Studio III firmware fits. F2 writes the active machine's slot. MiSTer Main autoloads `boot0.rom` through `boot3.rom`, using index `[7:6]` for those four slots. The lowercase `f,!chip8.bin` entry immediately before F3 asks Main to send `chip8.bin` from the selected `.ch8` file's directory at supplemental index `$0103`; F4 sends a manually selected `.bin` at `$0004`. Either path caches a complete 768-byte interpreter in the fifth 4 KB BRAM, which also holds the loaded game. Loading the interpreter does not activate CHIP-8 by itself; the F3 main program follows at `$0003` and is rejected unless the cached image completed. The manual cache lasts for the core session and lets one interpreter serve programs in multiple directories. F3 is disabled on Visicom.
+Studio II firmware is normally 2 KB; each resident BRAM is 4 KB so Studio III firmware fits. F2 writes the active machine's slot. MiSTer Main autoloads `boot0.rom` through `boot3.rom`, using index `[7:6]` for those four slots.
+
+The fifth BRAM (`rom4`) starts with bundled OpenStudio2 via the optional `dpram.init_file_g` parameter and `$readmemh`. `rom/openstudio2.hex` defines all 4096 bytes: the 2 KB interpreter followed by 2 KB of `FF`. Its MIT notice, source revision, and checksums are in `rom/openstudio2.md`. Both interpreter-available and OS2-type flags start true. Ports and synchronous read timing are unchanged.
+
+F3 selects a `.ch8` at `$0003` without requesting a companion file. F4 explicitly replaces the shared interpreter bank with a selected binary at `$0004`: 768 bytes selects Marcel; 2 KB selects OpenStudio2. The legacy supplemental `$0103` loader route remains accepted for existing simulation coverage, but the OSD no longer requests it. Starting an override invalidates the cached interpreter and exits the current game. Loading an interpreter does not itself activate CHIP-8. Ordinary resets, unloads, and machine switching retain the override; reloading the core restores the bundled image. F3 is disabled on Visicom.
+
+Quartus resolves the repository-relative image path with `files.qip` including the ROM search directory. The Verilator Makefile supplies an absolute path to the same bundled file for both GUI and headless models, so runtime working directory does not affect lookup. Both model targets depend on the image, so changing it invalidates the build. No neighboring OpenStudio2 checkout is required.
+
+Embedding verification remains pending: build with `make -C verilator headless`, then run `bash tools/chip8-loader-test.sh`. The loader check preserves and compares the initialized bank, including its unused half, and covers no-override loads on all machine selections and explicit overrides. Follow with successive game loads, CLEAR/reset/unload, machine switching, and Marcel/development override gameplay checks. A user-run Quartus 17.0.x GUI build must confirm block RAM inference and timing, followed by a MiSTer cold start without `chip8.bin` (also check that an old companion file is ignored).
 
 ## Memory and cartridge model
 
@@ -170,14 +178,18 @@ Visicom uses `$0000-$07FF` for resident ROM and `$0800-$0FFF` for the current ca
 
 Raw `.bin`/`.rom` images load from `$0400` on Studio machines and `$0800` on Visicom. `.st2` is detected from `RCA2` magic and uses its header page table. Page ownership permits cartridge pages `$0C/$0D` to replace the normal RAM mirror. Studio II rejects system pages `$00-$03` and RAM pages `$08-$09`; Studio III also reserves colour page `$0B`; Visicom accepts only its cartridge pages `$08-$0F`, preserving resident pages `$00-$07`. Pages `$10+` are dropped.
 
-F3 `.ch8` bytes `$000-$4FF` map to physical ROM `$0300-$07FF`; bytes
+With bundled OpenStudio2, F3 `.ch8` bytes `$000-$DFF` load at offsets
+`$200-$FFF` in separate 4 KB CHIP-8 RAM, mapped to CPU `$1000-$1FFF`.
+Later bytes are dropped. Interpreter ROM remains in the existing fifth bank.
+
+With a Marcel override, F3 `.ch8` bytes `$000-$4FF` map to physical ROM `$0300-$07FF`; bytes
 `$500-$8FF` map to `$0C00-$0FFF`; bytes from `$900` onward are dropped. This
-path requires a complete cached `chip8.bin`, loaded automatically or manually,
+path requires a complete manually loaded Marcel interpreter,
 and rejects Visicom in RTL as well as in the OSD.
 Activation selects the fifth ROM on Studio II and both Studio III variants,
 without changing the native RAM or Studio III colour-RAM windows. CLEAR, Reset,
-and machine switches retain the game; F1, F2, and either interpreter-loading
-path exit CHIP-8 mode. Loading a replacement interpreter also clears the prior
+and machine switches retain the game; F1, F2, and interpreter overrides
+exit CHIP-8 mode. Loading a replacement interpreter also clears the prior
 program before the replacement arrives.
 
 [Marcel van Tongeren's interpreter map](https://www.emma02.hobby-site.com/studio_chip8.html)
@@ -235,16 +247,57 @@ No single test establishes overall accuracy:
 
 Canonical paths are `rom/` for firmware, `software/` for the corpus, `tools/refemu/` for the reference emulator, `verilator/obj_dir_headless/Vtop` for the headless model, and `out/` for generated captures. `refs/` is optional research material and must not be a normal build dependency. Scripts derive the repository root from their own location; never embed a maintainer's private path.
 
-Quartus commands are `tools/quartus-build.sh`, `tools/quartus-build.sh map`, and `tools/quartus-build.sh clean`. The script uses the amd64 Quartus 17 container with `--parallel=1`, which is required under Apple Silicon emulation. After RAM changes, inspect `output_files/Studio-II.map.rpt` for inferred `altsyncram` instances.
+Local builds normally use the Quartus 17.0.x GUI: open `Studio-II.qpf` and use
+**Processing > Start Compilation** (or **Start > Start Analysis & Synthesis**
+for a map-only check). After RAM changes, inspect
+`output_files/Studio-II.map.rpt` for inferred `altsyncram` instances.
+
+The current Windows installation is `C:\intelFPGA_lite\17.0\quartus\bin64`.
+For an explicitly requested command-line build, run from the repository root
+in PowerShell:
+
+```powershell
+& 'C:\intelFPGA_lite\17.0\quartus\bin64\quartus_sh.exe' --flow compile Studio-II
+# Analysis & synthesis only:
+& 'C:\intelFPGA_lite\17.0\quartus\bin64\quartus_map.exe' Studio-II
+```
+
+No PATH change is needed with these absolute paths. Verify the installation path
+on other machines. `tools/quartus-build.sh` is a separate, Docker-only workflow
+for the amd64 Quartus 17 container; its `--parallel=1` workaround is for Apple
+Silicon emulation. It is not the default local build command.
 
 Directed checks include `tools/memdecode-test.sh`, `tools/chip8-loader-test.sh`, `tools/visicom-loader-test.sh`, `tools/tone-test.sh`, and `tools/verify-beeper.sh`. The old corpus runners (`score-21.sh`, `score-conic.sh`, `play-test.sh`, `probe-keys.sh`, `visicom-test.sh`, and `contact-sheet.py`) are disabled because they use obsolete dump paths. Use the game-start sweep below for game captures. Synthetic device/loader tests remain separate from game-start discovery.
 
+Run `bash tools/headless-smoke.sh` in the configured Verilator build shell for
+the existing loader/input, memory, CHIP-8, Visicom ownership, and tone checks.
+It never builds: missing output or an unsuccessful `make -q` freshness check
+stops the suite. Build explicitly with `make -C verilator headless` first;
+the headless target tracks the RTL's `.svh` includes as well as source files.
+Freshness uses dependency timestamps, not a content-addressed build record.
+The suite needs Bash, make, Python 3, and GNU timeout, plus the firmware used by
+the existing checks. The CHIP-8 loader check generates its own interpreter-sized
+byte fixture; it tests routing and acceptance, not interpreter execution.
+Each check has a 120-second limit (`HEADLESS_TIMEOUT` overrides seconds), and
+each invocation retains separate logs in a new `out/headless-smoke.*` directory.
+Any failed or timed-out check makes the suite return nonzero; remaining checks
+still run. `tools/verify-beeper.sh` stays separate because it starts builds.
+
+`python3 -B tools/test-headless-smoke.py` exercises crash propagation, empty
+measurements, stale-build rejection, timeouts, and log retention using substitute
+programs; it does not run RTL. Individual directed scripts accept `HEADLESS_SIM`
+for these negative controls; the suite always selects the canonical model.
+These checks establish runner behavior, not that every RTL assertion detects
+the corresponding hardware defect. The simulator returns an error if it stops
+before completing the requested frames or loader downloads. An intentionally
+disabled display remains valid for audio-only tests.
+
 The focused input/display checks in `--loader-check` cover Pinball CRC selection,
 Grand Pack's PAL/NTSC menu selection and unload, Climber directions, and `OUT 1`
-display enable. After changing the included mapping files, explicitly rebuild:
+display enable. To build and run these checks separately:
 
 ```sh
-make -C verilator -B headless
+make -C verilator headless
 verilator/obj_dir_headless/Vtop --bios rom/studio2.rom --loader-check --quiet
 ```
 
@@ -340,4 +393,4 @@ The original core is by Jason Coombes, with MiSTer integration and early Pixie w
 
 Accuracy work also relies on Paul Robson, MAME contributors, Marcel van Tongeren, Andrew Modla, Eric Smith, dmadole, kanpapa, RCA documentation, and community hardware research. Special thanks to Kevin Bunch for reference captures and hardware insight, and to the Hagley Museum and Library for preservation work.
 
-The project is GPL-2.0-or-later. Reference-emulator sources under `tools/refemu/` are not compiled into the core.
+The project is GPL-2.0-or-later. OpenStudio2 is MIT. Reference-emulator sources under `tools/refemu/` are not compiled into the core.

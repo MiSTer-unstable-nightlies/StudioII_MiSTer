@@ -62,30 +62,30 @@ module pixie_video
 
 // RCA Studio II
 cdp1861 cdp1861 (
-    .clk        (clk),          // I  pixel-rate domain
-    .ce_pix     (clk_enable),   // I
-    .cpu_ce     (cpu_ce),       // I  one pulse per CPU machine cycle
-    .reset      (reset),        // I
+    .clk        (clk),
+    .ce_pix     (clk_enable),
+    .cpu_ce     (cpu_ce),
+    .reset      (reset),
 
-    .SC         (SC),           // I [1:0]
-    .data_in    (data_in),      // I [7:0]  byte the CPU delivers during DMA-OUT
-    .vis_mode   (vis_mode),     // I
-    .data_in2   (data_in2),     // I [7:0]
-    .disp_on    (disp_on),      // I
-    .disp_off   (disp_off),     // I
+    .SC         (SC),
+    .data_in    (data_in),
+    .vis_mode   (vis_mode),
+    .data_in2   (data_in2),
+    .disp_on    (disp_on),
+    .disp_off   (disp_off),
 
-    .DMAO       (DMAO),         // O
-    .INT        (INT),          // O
-    .EFx        (EFx),          // O
+    .DMAO       (DMAO),
+    .INT        (INT),
+    .EFx        (EFx),
 
-    .csync      (csync),        // O
-    .video      (video),        // O
-    .VSync      (VSync),        // O
-    .HSync      (HSync),        // O
-    .VBlank     (VBlank),       // O
-    .HBlank     (HBlank),       // O
+    .csync      (csync),
+    .video      (video),
+    .VSync      (VSync),
+    .HSync      (HSync),
+    .VBlank     (VBlank),
+    .HBlank     (HBlank),
     .video_de   (video_de),
-    .bitmap_de  (bitmap_de),     // O
+    .bitmap_de  (bitmap_de),
     .bitmap_hblank(bitmap_hblank),
     .bitmap_vblank(bitmap_vblank),
     .colour_in     (colour_in),
