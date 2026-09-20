@@ -4,7 +4,8 @@
 //
 //  Original implementation by Jason Coombes (JasonA-dev), 2022.
 //  Extended 2026 by Alan Steremberg: interrupts, DMA-OUT, RET/DIS/SAV/MARK/IDL,
-//  and machine-cycle timing (2 cycles per instruction, 3 for long branch/skip).
+//  LOAD mode, and machine-cycle timing (2 cycles per instruction, 3 for long
+//  branch/skip).
 //
 //  This program is free software; you can redistribute it and/or modify it
 //  under the terms of the GNU General Public License as published by the Free
@@ -90,6 +91,7 @@ module cdp1802 (
   localparam RESET     = 4'd0;    //    hardware reset asserted
   localparam FETCH     = 4'd1;    // S0 fetching opcode from PC
   localparam EXECUTE   = 4'd2;    // S1 main exection state
+  localparam LOAD      = 4'd3;    // S1 load-mode idle
   localparam BRANCH3   = 4'd5;    //    short branch, new PC lo-byte
   localparam SKIP      = 4'd6;    //    for untaken
 
@@ -98,6 +100,11 @@ module cdp1802 (
   localparam INTERRUPT = 4'd9;    // S3 Interrupt state
   localparam IDLE      = 4'd10;   //    IDL, waiting for DMA or interrupt
   localparam LSKIP     = 4'd11;   //    long-skip family (C4-C7, CC-CF), 3rd cycle
+
+  wire reset_mode = ~CLEAR_N & WAIT_N;
+  wire load_mode  = ~CLEAR_N & ~WAIT_N;
+  wire [3:0] cycle_state = load_mode &&
+                           (state != DMA_IN) && (state != DMA_OUT) ? LOAD : state;
 
   // ---------- registers --------------------------------
   reg   [3:0] P;                  // Program Counter
@@ -116,7 +123,8 @@ module cdp1802 (
 
 
   // ---------- RAM hookups ------------------------------
-  assign ram_d = (I == 4'h6)      ? io_din :
+  assign ram_d = (cycle_state == DMA_IN) ? io_din :
+                 (I == 4'h6)      ? io_din :
                  ({I, N} == 8'h78) ? T      :
                  ({I, N} == 8'h79) ? {X, P} : D;
   assign ram_a = Rrd;             // RAM address always one of the 16-bit regs
@@ -140,10 +148,13 @@ module cdp1802 (
   wire [3:0] next_cycle = dma_in_req  ? DMA_IN    :
                           dma_out_req ? DMA_OUT   :
                           int_pending ? INTERRUPT : FETCH;
+  wire [3:0] load_next_cycle = dma_in_req  ? DMA_IN  :
+                               dma_out_req ? DMA_OUT : LOAD;
 
   // ---------- fetch/interrupt/dma/execute ----------------------------
   always @*
-    case (state)
+    case (cycle_state)
+    LOAD:       state_n = load_mode ? load_next_cycle : FETCH;
     FETCH:      state_n = EXECUTE;
     EXECUTE:
       casez ({I, N})
@@ -157,13 +168,13 @@ module cdp1802 (
     LSKIP:      state_n = next_cycle;
     IDLE:       state_n = (next_cycle == FETCH) ? IDLE : next_cycle;
     DMA_IN,
-    DMA_OUT:    state_n = next_cycle;
+    DMA_OUT:    state_n = load_mode ? load_next_cycle : next_cycle;
     INTERRUPT:  state_n = FETCH;
     default:    state_n = FETCH;
     endcase
 
   always @*
-    case (state)
+    case (cycle_state)
     FETCH:            SC = 2'b00;   // S0 fetch
     DMA_IN, DMA_OUT:  SC = 2'b10;   // S2 DMA
     INTERRUPT:        SC = 2'b11;   // S3 interrupt
@@ -187,7 +198,8 @@ module cdp1802 (
   localparam MEM_WR  = 2'b01;       // memory write strobe
 
   always @*
-    case (state)
+    case (cycle_state)
+    LOAD:                           {action, Rwd} = {4'd0, MEM___, R[0]};
     FETCH, SKIP:                    {action, Rwd} = {P, MEM_RD, R[P] + 16'd1};
     // 8'h00 is IDL
     EXECUTE:
@@ -264,20 +276,20 @@ module cdp1802 (
 
   assign io_n = N[2:0];
   // OUT completes in EXECUTE
-  assign io_out = (I == 4'h6) & ~N[3] & (state == EXECUTE) & (N[2:0] != 3'b000);
-  assign io_inp = (I == 4'h6) & N[3] & (state == EXECUTE) & (N[2:0] != 3'b000);
+  assign io_out = (I == 4'h6) & ~N[3] & (cycle_state == EXECUTE) & (N[2:0] != 3'b000);
+  assign io_inp = (I == 4'h6) & N[3] & (cycle_state == EXECUTE) & (N[2:0] != 3'b000);
   // OUT sends M(R(X)), which is the byte read during this EXECUTE cycle
   assign io_dout = ram_q;
   assign unsupported = 1'b0;      // RET/DIS/SAV/MARK/IDL all implemented
   // ---------- cycle commit -----------------------------
-  always @(negedge CLEAR_N or posedge CLOCK) begin
+  always @(posedge reset_mode or posedge CLOCK) begin
     // CLEAR WAIT Control Lines
     // Clear 0 Wait 0 Load
     // Clear 0 Wait 1 Reset
     // Clear 1 Wait 0 Pause
     // Clear 1 Wait 1 Run
     // Reset
-    if (!CLEAR_N) begin
+    if (reset_mode) begin
         // 1802 reset leaves I=N=0, Q=0, X=0, P=0, R(0)=0 and IE=1
         {Q, P, X} <= 0;
         {DF, D} <= 9'd0;
@@ -288,8 +300,13 @@ module cdp1802 (
         state <= RESET;
       end
     else begin
+      if (clk_enable && load_mode) begin
+        state <= state_n;
+        if ((cycle_state == DMA_IN) || (cycle_state == DMA_OUT))
+          R[0] <= Rwd;
+      end
       // Clear=1, Wait=1 is Run (see table above)
-      if (WAIT_N && clk_enable) begin
+      else if (WAIT_N && clk_enable) begin
         state <= state_n;
         if (state == FETCH)
           IR <= ram_q;                                  // opcode for the coming EXECUTE

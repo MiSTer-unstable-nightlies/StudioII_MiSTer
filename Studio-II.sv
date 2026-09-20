@@ -205,13 +205,10 @@ assign BUTTONS = 0;
 `include "build_id.v"
 localparam CONF_STR = {
 	"Studio-II;v11;",
-	"F1,ST2BIN,Load Cartridge;",
+	"F1,ST2BIN,Load Software;",
 	// CHIP-8 data can be preloaded regardless of the active machine
 	"F3,CH8,Load CHIP-8;",
 	"-;",
-	"F2,BINROM,Load Firmware;",
-	"F4,BINROM,Load CHIP-8 Interpreter;",
-	"-;",	
 	// Machine held until Apply
 	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
 	"R[15],Apply and Reset;",
@@ -222,23 +219,36 @@ localparam CONF_STR = {
 	"O[8:7],Players,Auto,1,2;",
 	"O[10:9],Numstick,Off,Pad A,Pad B;",
 	"-;",
-	"O[16],Sound,On,Off;",
-	"D4O[19:17],NE555 pitch,Original,High,Higher,Highest,Lowest,Lower,Low;",
-	"D5O[20],CDP1863 pitch,Original,PAL;",
-	"-;",
-	"O[122:121],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"d6O[21],Vertical Crop,Disabled,216p (5x);",
-	"d6O[25:22],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
-	"O[12:11],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
-	"O[26],Borders,On,Off;",
-	"-;",
-	"F6,GBP,Load Studio II Palette;",
-	"F5,GBP,Load Visicom Palette;",
+	"P1,Audio & Video;",
+	"P1-;",
+	"P1O[122:121],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
+	// Menu-mask prefixes must precede the page selector.
+	"d6P1O[21],Vertical Crop,Disabled,216p (5x);",
+	"d6P1O[25:22],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
+	"P1O[12:11],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
+	"P1O[26],Borders,Show,Hide;",
+	"P1-;",
+	"P1O[16],Sound,On,Off;",
+	"D4P1O[19:17],Beeper Pitch,Original,High,Higher,Highest,Lowest,Lower,Low;",
+	"D5P1O[20],CDP1863 Pitch,Original,PAL (Lower);",
+	"P1-;",
+	"P2,Palettes;",
+	"P2-;",
+	"D8P2O[33:31],Studio II,Original,Amber,Green,Inverted,Custom;",
+	"HBP2F6,GBP,Load Custom Palette;",
+	"D7P2O[39:37],Studio III,Original,Prototype,Warm,Cool,Custom;",
+	"HAP2F7,PAL,Load Custom Palette;",
+	"D9P2O[36:34],Visicom,Balanced,Box Art,Emma 02,FLiP,MAME,Manuals,Nicole Express,Custom;",
+	"HCP2F5,GBP,Load Custom Palette;",
+	"P3,System;",
+	"P3-;",
+	"P3F2,BINROM,Load Machine ROM;",
+	"P3F4,BINROM,Load CHIP-8 Core;",
 	"-;",
 	"T[1],Clear;",
-	"R[28],Unload Cartridge;",
+	"R[28],Unload Software;",
 	"T[0],Reset;",
-	"R[27],Unload Cartridge and Reset;",
+	"R[27],Unload Software and Reset;",
 	// Virtual mapping, not menu items
 	"J1,Fire,Extra,Start,Clear,A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,B0,B1,B2,B3,B4,B5,B6,B7,B8,B9;",
 	// jn is default virtual mapping
@@ -257,8 +267,7 @@ wire  [31:0] joystick_0, joystick_1;
 wire  [15:0] joystick_l_analog_0, joystick_r_analog_0;
 wire  [15:0] joystick_l_analog_1, joystick_r_analog_1;
 
-// Sound On/Off switch only gates audio. Tone
-// generators continue running.
+// Tone generators continue running.
 wire signed [15:0] audio_out = status[16] ? 16'sd0 : audio;
 assign AUDIO_L = audio_out;
 assign AUDIO_R = audio_out;
@@ -335,13 +344,18 @@ wire clear_request = status[1] | clear_key | joy_clear;
 // Preserve video timing on soft resets
 reg       vis_palette_latched = 1'b0;
 reg       studio_palette_latched = 1'b0;
+reg       studio3_palette_latched = 1'b0;
 wire      vis_palette_index = ioctl_index[5:0] == 6'd5;
 wire      studio_palette_index = ioctl_index[5:0] == 6'd6;
+wire      studio3_palette_index = ioctl_index[5:0] == 6'd7;
 wire      vis_palette_download = ioctl_download &&
 	                              (vis_palette_index || vis_palette_latched);
 wire      studio_palette_download = ioctl_download &&
 	                                 (studio_palette_index || studio_palette_latched);
-wire      palette_download = vis_palette_download || studio_palette_download;
+wire      studio3_palette_download = ioctl_download &&
+	                                  (studio3_palette_index || studio3_palette_latched);
+wire      palette_download = vis_palette_download || studio_palette_download ||
+	                         studio3_palette_download;
 wire      machine_download = ioctl_download && !palette_download;
 wire      user_download_now = (ioctl_index[5:0] == 6'd1) ||
 	                          (ioctl_index[5:0] == 6'd2) ||
@@ -358,10 +372,12 @@ always @(posedge clk_sys) begin
 	if (!ioctl_download) begin
 		vis_palette_latched <= 1'b0;
 		studio_palette_latched <= 1'b0;
+		studio3_palette_latched <= 1'b0;
 	end
-	else if (!vis_palette_latched && !studio_palette_latched) begin
+	else if (!vis_palette_latched && !studio_palette_latched && !studio3_palette_latched) begin
 		if (vis_palette_index)         vis_palette_latched <= 1'b1;
 		else if (studio_palette_index) studio_palette_latched <= 1'b1;
+		else if (studio3_palette_index) studio3_palette_latched <= 1'b1;
 	end
 end
 
@@ -534,7 +550,17 @@ assign status_menumask = ((!status[6]) ? 16'h0004 : 16'h0000) |
 	                     (((machine_active == 2'd1) ||
 	                       (machine_active == 2'd2)) ? 16'h0010 : 16'h0000) |
 	                     ((machine_active != 2'd2) ? 16'h0020 : 16'h0000) |
-	                     (en216p ? 16'h0040 : 16'h0000);
+	                     (en216p ? 16'h0040 : 16'h0000) |
+	                     (((machine_active != 2'd1) &&
+	                       (machine_active != 2'd2)) ? 16'h0080 : 16'h0000) |
+	                     ((machine_active != 2'd0) ? 16'h0100 : 16'h0000) |
+	                     ((machine_active != 2'd3) ? 16'h0200 : 16'h0000) |
+	                     ((((machine_active == 2'd1) || (machine_active == 2'd2)) &&
+	                       (status[39:37] == 3'd4)) ? 16'h0000 : 16'h0400) |
+	                     (((machine_active == 2'd0) &&
+	                       (status[33:31] == 3'd4)) ? 16'h0000 : 16'h0800) |
+	                     (((machine_active == 2'd3) &&
+	                       (status[36:34] == 3'd7)) ? 16'h0000 : 16'h1000);
 
 // resample 88 wide 4x to 352 for scaler
 assign CLK_VIDEO = clk_vid;
@@ -546,72 +572,29 @@ always @(posedge clk_vid) begin
 	ce_pix_vid <= (ce_vid_cnt == 3'd5);
 end
 
-// half scale 
-wire [7:0] vid_lvl = video_bg ? 8'h80 : 8'hFF;
+wire [23:0] palette_rgb;
+studio2_palette palette
+(
+	.clk_sys(clk_sys),
+	.machine(machine_active),
+	.video(video),
+	.video_bg(video_bg),
+	.vis_index(vis_index),
+	.studio2_select(status[33:31]),
+	.studio3_select(status[39:37]),
+	.visicom_select(status[36:34]),
+	.studio2_download(studio_palette_download),
+	.studio3_download(studio3_palette_download),
+	.visicom_download(vis_palette_download),
+	.ioctl_wr(ioctl_wr),
+	.ioctl_addr(ioctl_addr),
+	.ioctl_data(ioctl_data),
+	.rgb(palette_rgb)
+);
 
-// Visicom
-reg [23:0] vis_color0 = 24'h11320C;
-reg [23:0] vis_color1 = 24'h5A93D5;
-reg [23:0] vis_color2 = 24'hB9B43D;
-reg [23:0] vis_color3 = 24'hD14C38;
-
-always @(posedge clk_sys) begin
-	if (vis_palette_download && ioctl_wr) begin
-		case (ioctl_addr)
-			// map gbp in reverse
-			25'd0:  vis_color3[23:16] <= ioctl_data;
-			25'd1:  vis_color3[15:8]  <= ioctl_data;
-			25'd2:  vis_color3[7:0]   <= ioctl_data;
-
-			25'd3:  vis_color2[23:16] <= ioctl_data;
-			25'd4:  vis_color2[15:8]  <= ioctl_data;
-			25'd5:  vis_color2[7:0]   <= ioctl_data;
-
-			25'd6:  vis_color1[23:16] <= ioctl_data;
-			25'd7:  vis_color1[15:8]  <= ioctl_data;
-			25'd8:  vis_color1[7:0]   <= ioctl_data;
-
-			25'd9:  vis_color0[23:16] <= ioctl_data;
-			25'd10: vis_color0[15:8]  <= ioctl_data;
-			25'd11: vis_color0[7:0]   <= ioctl_data;
-
-			default: ;
-		endcase
-	end
-end
-
-reg [127:0] studio_palette = 128'hFFFFFFAAAAAA55555500000000000000;
-
-always @(posedge clk_sys) begin
-	if (studio_palette_download && ioctl_wr)
-		studio_palette <= {studio_palette[119:0], ioctl_data};
-end
-
-wire [23:0] studio_fg = studio_palette[127:104];
-wire [23:0] studio_bg = studio_palette[55:32];
-wire [23:0] studio_rgb = video[2] ? studio_fg : studio_bg;
-wire machine_studio2 = (machine_active == 2'd0);
-
-wire machine_visicom = (machine_active == 2'd3);
-reg [23:0] vis_rgb;
-always @(*) begin
-	case (vis_index)
-		2'd0:    vis_rgb = vis_color0;
-		2'd1:    vis_rgb = vis_color1;
-		2'd2:    vis_rgb = vis_color2;
-		default: vis_rgb = vis_color3;
-	endcase
-end
-
-wire [7:0] vid_r = machine_visicom ? vis_rgb[23:16] :
-                   machine_studio2 ? studio_rgb[23:16] :
-                   (video[2] ? vid_lvl : 8'h00);
-wire [7:0] vid_g = machine_visicom ? vis_rgb[15:8] :
-                   machine_studio2 ? studio_rgb[15:8] :
-                   (video[1] ? vid_lvl : 8'h00);
-wire [7:0] vid_b = machine_visicom ? vis_rgb[7:0] :
-                   machine_studio2 ? studio_rgb[7:0] :
-                   (video[0] ? vid_lvl : 8'h00);
+wire [7:0] vid_r = palette_rgb[23:16];
+wire [7:0] vid_g = palette_rgb[15:8];
+wire [7:0] vid_b = palette_rgb[7:0];
 
 ////////////////// Numstick //////////////////
 
@@ -726,8 +709,13 @@ always @(posedge CLK_VIDEO) begin
 end
 
 wire scale_active = |status[12:11];
-wire [11:0] arx_val = (scale_active || ar == 2'd0) ? 12'd4 : {10'd0, ar - 1'd1};
-wire [11:0] ary_val = (scale_active || ar == 2'd0) ? 12'd3  : 12'd0;
+// Preserve raster pixel proportions when cropping 88x242/292 to 64x128/192.
+wire [11:0] original_arx = !status[26] ? 12'd4 :
+                           (machine_active == 2'd1) ? 12'd146 : 12'd11;
+wire [11:0] original_ary = !status[26] ? 12'd3 :
+                           (machine_active == 2'd1) ? 12'd99 : 12'd6;
+wire [11:0] arx_val = (scale_active || ar == 2'd0) ? original_arx : {10'd0, ar - 1'd1};
+wire [11:0] ary_val = (scale_active || ar == 2'd0) ? original_ary : 12'd0;
 
 video_freak video_freak
 (

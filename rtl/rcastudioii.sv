@@ -293,18 +293,23 @@ wire [7:0]  cart_q;
 wire [7:0]  sram_q;
 wire [7:0]  pl1_q;
 wire [7:0]  os2_ram_q;
-reg         rom_sel_q, cart_sel_q, ram_sel_q, pl1_sel_q, os2_ram_sel_q;
+reg         rom_sel_q, cart_sel_q, ram_sel_q, pl1_sel_q, col_sel_q, os2_ram_sel_q;
+reg  [5:0]  col_addr_q;
 always @(posedge clk_sys) begin
 	rom_sel_q     <= rom_sel | rom_hi;
 	cart_sel_q    <= cart_sel;
 	ram_sel_q     <= ram_sel;
 	pl1_sel_q     <= vis_pl1;
+	col_sel_q     <= col_sel;
+	col_addr_q    <= ram_a[5:0];
 	os2_ram_sel_q <= os2_ram_sel;
 end
 assign ram_q = os2_ram_sel_q ? os2_ram_q
              : pl1_sel_q        ? pl1_q
              : ram_sel_q        ? sram_q
              : cart_sel_q       ? cart_q
+             // RCA defines CPU-visible colour bytes as $00-$07.
+             : col_sel_q        ? {5'b00000, colour_ram[col_addr_q]}
              : rom_sel_q        ? rom_q : 8'hFF;
 
 ////////////////// CARTRIDGE LOADER /////////////////////////////////////////
@@ -349,8 +354,7 @@ wire  [7:0] st2_pg    = st2_page[st2_blk];
 
 wire        st2_pg_ok = (st2_pg[7:4] == 4'h0) &&
 	                    (machine_visicom ? st2_pg[3]
-	                     : ((st2_pg[3:0] > 4'h3) &&
-	                        (st2_pg[3:0] != 4'h8) && (st2_pg[3:0] != 4'h9) &&
+	                     : ((st2_pg[3:0] != 4'h8) && (st2_pg[3:0] != 4'h9) &&
 	                        !(is_studio3 && (st2_pg[3:0] == 4'hB))));
 
 wire        st2_data  = ioctl_addr >= 16'd256;          // past the header
@@ -377,7 +381,7 @@ wire        ch8_we = marcel_ch8_we | os2_ch8_we;
 wire [3:0]  cart_pg = cart_a[11:8];
 wire        cart_claim = machine_visicom
                        ? cart_pg[3]
-                       : ((cart_pg >= 4'h4) &&
+                       : ((st2_mode || (cart_pg >= 4'h4)) &&
                           (cart_pg != 4'h8) && (cart_pg != 4'h9) &&
                           !(is_studio3 && (cart_pg == 4'hB)));
 wire        raw_known  = (ioctl_addr > 25'd3) ||

@@ -62,7 +62,7 @@ The current routing exceptions are:
 
 - Generic `8-way` Auto sends controller 1 to the normal keypad only: A by
   default; B for recognized Pinball, Blackjack, Fun with Numbers, Biorhythm,
-  Gambler I/II images, and Studio III/Grand Pack Blackjack. Players 1 mirrors A/B;
+  Gambler I/II, Reikan images, and Studio III/Grand Pack Blackjack. Players 1 mirrors A/B;
   Players 2 splits controllers 1/2 across A/B. Start remains on A and direct
   keypad bindings remain independent. Manual `8-way` retains the detected
   game's normal keypad.

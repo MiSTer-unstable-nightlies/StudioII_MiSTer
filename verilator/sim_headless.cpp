@@ -118,7 +118,7 @@ static uint16_t apply_cart_image(std::vector<uint8_t>& rom, const std::string& p
                     bool valid = (page & 0xf0) == 0 &&
                         (machine == 3
                             ? (page & 0x08) != 0
-                            : page > 3 && page != 8 && page != 9 &&
+                            : page != 8 && page != 9 &&
                               !((machine == 1 || machine == 2) && page == 0x0b));
                     if (valid) {
                         addr = ((size_t)(page & 0x0f) << 8) | (i & 0xff);
@@ -135,7 +135,7 @@ static uint16_t apply_cart_image(std::vector<uint8_t>& rom, const std::string& p
         rom[addr] = data[i];
         unsigned page = addr >> 8;
         bool claim = machine == 3 ? page >= 8 :
-            page >= 4 && page != 8 && page != 9 &&
+            (st2 || page >= 4) && page != 8 && page != 9 &&
             !((machine == 1 || machine == 2) && page == 0x0b);
         bool format_known = st2 ? i >= 0x100 : i >= 3;
         if (claim && format_known) pages |= (uint16_t)(1u << page);
@@ -445,9 +445,10 @@ struct KeyEvent {
 static const char* state_name(int s) {
     switch (s) {
         case 0: return "RESET";  case 1: return "FETCH";     case 2: return "EXECUTE";
-        case 3: return "EXECUTE2"; case 4: return "BRANCH2"; case 5: return "BRANCH3";
+        case 3: return "LOAD";   case 5: return "BRANCH3";
         case 6: return "SKIP";   case 7: return "DMA_IN";    case 8: return "DMA_OUT";
-        case 9: return "INTERRUPT"; default: return "?";
+        case 9: return "INTERRUPT"; case 10: return "IDLE";  case 11: return "LSKIP";
+        default: return "?";
     }
 }
 static const char* sc_name(int s) {
@@ -544,6 +545,7 @@ static void usage(const char* argv0) {
 "    --manual-chip8-fw FILE  same interpreter choices through the F4 OSD path, index 4\n"
 "    --ch8 FILE           CHIP-8 program, ioctl index 3\n"
 "    --loader-check       verify ROM loading, CHIP-8 mapping and firmware profiles\n"
+"    --cart-loader-check  verify cartridge loading, mapping and unload only\n"
 "\n"
 "  Run length\n"
 "    --frames N           stop after N video frames (default 300)\n"
@@ -636,6 +638,7 @@ int main(int argc, char** argv) {
     int  shot_every = 0, dump_every = 0;
     bool want_ppm = false, want_ascii = false, want_vram = false;
     bool loader_check = false;
+    bool cart_loader_only = false;
     bool shot_last = false, frame_log = false, quiet = false;
     long trace_cpu = 0, trace_from = 0;
     bool trace_r0 = false;
@@ -684,6 +687,10 @@ int main(int argc, char** argv) {
         }
         else if (a == "--ch8")        ch8 = next("--ch8");
         else if (a == "--loader-check") loader_check = true;
+        else if (a == "--cart-loader-check") {
+            loader_check = true;
+            cart_loader_only = true;
+        }
         else if (a == "--outdir")     outdir = next("--outdir");
         else if (a == "--prefix")     prefix = next("--prefix");
         else if (a == "--dump-file")  dumpfile = next("--dump-file");
@@ -1196,6 +1203,32 @@ int main(int argc, char** argv) {
                    (unsigned)RS(cart_page), (unsigned)expected_pages);
             failures++;
         }
+        const uint16_t protected_pages = machine == 3 ? 0 : (uint16_t)(0x0300u |
+            ((machine == 1 || machine == 2) ? 0x0800u : 0u));
+        if ((uint16_t)RS(cart_page) & protected_pages) {
+            printf("FAIL protected pages claimed in cart_page = %04X\n",
+                   (unsigned)RS(cart_page));
+            failures++;
+        }
+
+        // A paged Studio image may overlay resident ROM. Verify the CPU sees
+        // the cartridge while the firmware bytes remain intact in their own
+        // BRAM (checked above).
+        if (machine != 3) {
+            for (int page = 0; page < 8; page++) {
+                if (!(expected_pages & (1u << page))) continue;
+                for (int offset : {0x00, 0xff}) {
+                    int addr = (page << 8) | offset;
+                    uint8_t got = read_cpu_bus((uint16_t)addr);
+                    uint8_t want = expected_cart[machine][addr];
+                    if (got != want) {
+                        printf("FAIL Studio overlay bus[$%03X] = %02X, expected %02X\n",
+                               addr, got, want);
+                        failures++;
+                    }
+                }
+            }
+        }
 
         // Visicom's resident half is always visible. Its cartridge half is
         // visible page by page, and an omitted page must return $FF even though
@@ -1216,6 +1249,40 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (cart_loader_only) {
+            top->rootp->top__DOT__cart_unload = 1;
+            top->clk_48 = 0;
+            top->eval();
+            top->clk_48 = 1;
+            top->eval();
+            top->clk_48 = 0;
+            top->eval();
+            top->rootp->top__DOT__cart_unload = 0;
+            top->eval();
+            if ((uint16_t)RS(cart_page) != 0) {
+                printf("FAIL unload left cart_page = %04X\n", (unsigned)RS(cart_page));
+                failures++;
+            }
+            for (int page = 0; page < 8; page++) {
+                for (int offset : {0x00, 0xff}) {
+                    int addr = (page << 8) | offset;
+                    uint8_t got = read_cpu_bus((uint16_t)addr);
+                    uint8_t want = expected[machine][addr];
+                    if (got != want) {
+                        printf("FAIL resident bus after unload[$%03X] = %02X, expected %02X\n",
+                               addr, got, want);
+                        failures++;
+                    }
+                }
+            }
+            printf("Cartridge loader checks: %s (%d mismatch%s)\n",
+                   failures ? "FAIL" : "PASS", failures, failures == 1 ? "" : "es");
+            top->final();
+            if (df != stdout) fclose(df);
+            delete top;
+            return failures ? 1 : 0;
+        }
+
         // Exercise all three CPU-visible memory maps regardless of which
         // interpreter image this particular invocation downloaded. This keeps
         // native Studio, Marcel, and OpenStudio2 decode behavior in one directed
@@ -1226,6 +1293,8 @@ int main(int argc, char** argv) {
         const uint8_t saved_sram_0bc = SRAM[0x0BC];
         const uint8_t saved_os2_000 = CHIP8RAM[0x000];
         const uint8_t saved_os2_abc = CHIP8RAM[0xABC];
+        uint8_t saved_colour_row[8];
+        for (int i = 0; i < 8; i++) saved_colour_row[i] = COLRAM[i];
         ROM1[0xC00] = 0x31;
         ROM4[0xC00] = 0x4D;
         SRAM[0x000] = 0x58;
@@ -1291,12 +1360,39 @@ int main(int argc, char** argv) {
             failures++;
         }
 
+        // Paul's Printer reads each eight-cell colour row and rewrites it one
+        // position over. Exercise that failure class through the CPU bus on
+        // both Studio III variants, including all four low-six-bit mirrors.
+        const uint8_t colour_seed[8] = {1, 2, 3, 4, 5, 6, 7, 0};
+        const uint8_t colour_rotated[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+        for (int studio3 = 1; studio3 <= 2; studio3++) {
+            top->machine = studio3;
+            top->eval();
+            for (int i = 0; i < 8; i++) write_cpu_bus(0x0B00 + i, colour_seed[i]);
+            for (int mirror = 0; mirror < 4; mirror++) {
+                for (int i = 0; i < 8; i++)
+                    expect_bus((uint16_t)(0x0B00 + mirror * 0x40 + i), colour_seed[i],
+                               studio3 == 1 ? "Studio III PAL colour RAM" :
+                                              "Studio III NTSC colour RAM");
+            }
+
+            uint8_t carry = read_cpu_bus(0x0B07);
+            for (int i = 7; i > 0; i--)
+                write_cpu_bus((uint16_t)(0x0B00 + i),
+                              read_cpu_bus((uint16_t)(0x0B00 + i - 1)));
+            write_cpu_bus(0x0B00, carry);
+            for (int i = 0; i < 8; i++)
+                expect_bus((uint16_t)(0x0B00 + i), colour_rotated[i],
+                           "Paul's Printer colour-row rotation");
+        }
+
         ROM1[0xC00] = saved_rom1_c00;
         ROM4[0xC00] = saved_rom4_c00;
         SRAM[0x000] = saved_sram_000;
         SRAM[0x0BC] = saved_sram_0bc;
         CHIP8RAM[0x000] = saved_os2_000;
         CHIP8RAM[0xABC] = saved_os2_abc;
+        for (int i = 0; i < 8; i++) COLRAM[i] = saved_colour_row[i];
         RS(chip8_fw_loaded) = fw_valid;
         RS(chip8_fw_os2) = fw_os2;
         RS(chip8_loaded) = ch8_accepted;
@@ -1595,9 +1691,57 @@ int main(int argc, char** argv) {
         RS(start_key) = saved_start_key;
 
         const unsigned saved_crc = RS(cart_crc);
+        const unsigned spacewar_crcs[] = {0x45b5, 0x977c, 0x8b09};
+        for (unsigned crc : spacewar_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0x21u) {
+                printf("FAIL CRC %04X Space War metadata\n", crc);
+                failures++;
+            }
+        }
+        const unsigned race_crcs[] = {0x1ca7, 0x47ea, 0x5374, 0x5638,
+                                      0x56c3, 0x6664, 0x797c, 0xc713, 0xd6c0,
+                                      0xfcc8};
+        for (unsigned crc : race_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0xb2u) {
+                printf("FAIL CRC %04X Race metadata\n", crc);
+                failures++;
+            }
+        }
+        const unsigned invaders_colour_v2_crcs[] = {0x45db, 0x4a95};
+        for (unsigned crc : invaders_colour_v2_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0x60u) {
+                printf("FAIL CRC %04X Invaders Colour v2 metadata\n", crc);
+                failures++;
+            }
+        }
+        const unsigned pacman_visicom_v2_crcs[] = {0x85ee, 0x5ec6};
+        for (unsigned crc : pacman_visicom_v2_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0x60u) {
+                printf("FAIL CRC %04X Pacman Visicom v2 metadata\n", crc);
+                failures++;
+            }
+        }
+        const unsigned hockey_visicom_v3_crcs[] = {0x0f35, 0x6c9a};
+        for (unsigned crc : hockey_visicom_v3_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0xa1u) {
+                printf("FAIL CRC %04X Hockey Visicom v3 metadata\n", crc);
+                failures++;
+            }
+        }
         const unsigned b_side_crcs[] = {0x92ba, 0xd3e2, 0x29b8, 0xaf65,
                                        0xc8b4, 0xcec2, 0x8cde, 0xda69,
-                                       0x2f1a, 0xf178, 0x5433, 0xb7a7};
+                                       0x2f1a, 0xf178, 0x5433, 0xb7a7,
+                                       0xda61};
         for (unsigned crc : b_side_crcs) {
             RS(cart_crc) = crc;
             top->eval();
@@ -1608,12 +1752,91 @@ int main(int argc, char** argv) {
                 failures++;
             }
         }
+        const unsigned neutral_crcs[] = {0x0ecc, 0x31ae, 0x937c, 0xac1e};
+        for (unsigned crc : neutral_crcs) {
+            RS(cart_crc) = crc;
+            top->eval();
+            if ((unsigned)RS(resolved_cart_profile) != 0x81u) {
+                printf("FAIL CRC %04X neutral keypad metadata\n", crc);
+                failures++;
+            }
+        }
         RS(cart_crc) = 0xffff;
         top->eval();
         if ((unsigned)RS(resolved_cart_profile) != 0x81u) {
             printf("FAIL unknown CRC must default to eight-way A\n");
             failures++;
         }
+        // Exact Visicom images must select a usable Auto layout and Start key.
+        const unsigned saved_pad_b_vis = RS(cart_pad_b_vis);
+        const unsigned saved_profile_valid_vis = RS(cart_profile_valid_vis);
+        const unsigned saved_map_profile = RS(map_profile);
+        const unsigned visicom_profiles[][2] = {
+            {0x12e8, 0x025}, {0x2bc5, 0x025}, {0xa7df, 0x025}, {0xbf97, 0x025},
+            {0xc7c6, 0x185}, {0xe4c4, 0x185},
+            {0x9bcf, 0x081}, {0xebf4, 0x081},
+            {0x2f1a, 0x185}, {0xf178, 0x185}, {0xc106, 0x185},
+            {0x5433, 0x181}, {0xb7a7, 0x181}
+        };
+        top->machine = 3;
+        for (const auto& entry : visicom_profiles) {
+            RS(cart_crc) = entry[0];
+            top->eval();
+            const unsigned resolved = RS(resolved_cart_profile);
+            if (resolved != entry[1]) {
+                printf("FAIL CRC %04X Visicom metadata %03X, expected %03X\n",
+                       entry[0], resolved, entry[1]);
+                failures++;
+            }
+            RS(cart_pad_b_vis) = (resolved >> 8) & 1;
+            RS(start_key) = resolved & 15;
+            const unsigned prof = (resolved >> 4) & 15;
+            RS(cart_profile_valid_vis) = 1;
+            RS(map_profile) = prof;
+            top->joy_manual = 0;
+            top->players = 0;
+            top->joystick_0 = 1u << 6;
+            top->joystick_1 = 0;
+            top->eval();
+            if ((unsigned)RS(joyA_active) != (1u << (entry[1] & 15)) ||
+                (unsigned)RS(joyB_active) != 0) {
+                printf("FAIL Visicom Auto Start mapped to A=$%03X B=$%03X, expected A=$%03X B=$000\n",
+                       (unsigned)RS(joyA_active), (unsigned)RS(joyB_active),
+                       1u << (entry[1] & 15));
+                failures++;
+            }
+            if (entry[1] == 0x025) {
+                top->joystick_0 = (1u << 4) | (1u << 1);
+                top->eval();
+                if ((unsigned)RS(joyA_active) != (1u << 2) ||
+                    (unsigned)RS(joyB_active) != (1u << 4)) {
+                    printf("FAIL Space Command fire and steer mapped to A=$%03X B=$%03X, expected A=$004 B=$010\n",
+                           (unsigned)RS(joyA_active), (unsigned)RS(joyB_active));
+                    failures++;
+                }
+            } else {
+                for (unsigned digit = 0; digit < 10; digit++) {
+                    const unsigned key = 1u << digit;
+                    const bool pad_b = (entry[1] & 0x100) != 0;
+                    top->joystick_0 = tennis_inputs[digit];
+                    top->eval();
+                    const unsigned expected_a = pad_b ? 0 : key;
+                    const unsigned expected_b = pad_b ? key : 0;
+                    if ((unsigned)RS(joyA_active) != expected_a ||
+                        (unsigned)RS(joyB_active) != expected_b) {
+                        printf("FAIL Visicom Auto numeric input mapped to A=$%03X B=$%03X, expected A=$%03X B=$%03X\n",
+                               (unsigned)RS(joyA_active), (unsigned)RS(joyB_active),
+                               expected_a, expected_b);
+                        failures++;
+                    }
+                }
+            }
+        }
+        RS(cart_pad_b_vis) = saved_pad_b_vis;
+        RS(cart_profile_valid_vis) = saved_profile_valid_vis;
+        RS(map_profile) = saved_map_profile;
+        RS(start_key) = saved_start_key;
+        top->machine = 0;
         RS(cart_crc) = saved_crc;
         for (unsigned mode : tennis_modes) {
             for (unsigned digit = 0; digit < 10; digit++) {
@@ -1747,6 +1970,30 @@ int main(int argc, char** argv) {
             if ((bool)PIX(display_enabled) != (m != 0)) {
                 printf("FAIL OUT 1 display enable on machine %u\n", m);
                 failures++;
+            }
+        }
+
+        // Ejecting only clears ownership. The separately stored cartridge
+        // bytes may remain cached, but resident firmware must be visible again.
+        top->machine = machine;
+        top->rootp->top__DOT__cart_unload = 1;
+        clock_core();
+        top->rootp->top__DOT__cart_unload = 0;
+        top->eval();
+        if ((uint16_t)RS(cart_page) != 0) {
+            printf("FAIL unload left cart_page = %04X\n", (unsigned)RS(cart_page));
+            failures++;
+        }
+        for (int page = 0; page < 8; page++) {
+            for (int offset : {0x00, 0xff}) {
+                int addr = (page << 8) | offset;
+                uint8_t got = read_cpu_bus((uint16_t)addr);
+                uint8_t want = expected[machine][addr];
+                if (got != want) {
+                    printf("FAIL resident bus after unload[$%03X] = %02X, expected %02X\n",
+                           addr, got, want);
+                    failures++;
+                }
             }
         }
 

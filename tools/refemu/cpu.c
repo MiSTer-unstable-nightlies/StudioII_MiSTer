@@ -426,6 +426,8 @@ void CPU_Reset()
 BYTE8 CPU_ReadMemory(WORD16 address)
 {
     address &= 0xFFF;
+    if (machineType == MACHINE_MPT02 && address >= 0xB00 && address < 0xC00)
+        return colourRAM[address & (COLOUR_CELLS-1)] & 0x07;
     #ifdef ARDUINO_VERSION
     if (address < 0x800)
     {
@@ -462,7 +464,7 @@ void CPU_WriteMemory(WORD16 address,BYTE8 data)
     //  the first write rather than needing a separate enable.
     if (machineType == MACHINE_MPT02 && address >= 0xB00 && address < 0xC00)
     {
-        colourRAM[address & (COLOUR_CELLS-1)] = data;
+        colourRAM[address & (COLOUR_CELLS-1)] = data & 0x07;
         colourEnabled = TRUE;
     }
 }

@@ -2,9 +2,9 @@
 
 This document keeps the Visicom COM-100 palette evidence, current comparison,
 and palette-selection requirements together. The core currently defaults to the
-Emma 02 reference palette. None of the observed print or capture values below is
+Balanced palette. None of the observed print or capture values below is
 an accepted hardware-default measurement. The definitive list and values of
-shipped `.vcp` files are maintained in [`palettes/README.txt`](../palettes/README.txt);
+shipped `.gbp` files are maintained in [`palettes/palettes-readme.txt`](../palettes/palettes-readme.txt);
 this document provides supporting evidence and interpretation.
 
 ## Colour indices
@@ -13,10 +13,10 @@ The core produces a two-bit Visicom colour index. The implemented lookup is:
 
 | Index | Conventional name | Default RGB |
 |---:|---|---:|
-| `0` | dark green; also border/background | `#004000` |
-| `1` | cyan | `#70D0FF` |
-| `2` | yellow | `#D0FF70` |
-| `3` | red | `#FF7070` |
+| `0` | dark green; also border/background | `#11320C` |
+| `1` | blue | `#5A93D5` |
+| `2` | yellow | `#B9B43D` |
+| `3` | red | `#D14C38` |
 
 The names describe the current visible result; the two-bit index is the stable
 machine-facing identity. Plane-index order and the border/background
@@ -24,17 +24,18 @@ relationship still require hardware review independently of palette fitting.
 
 ## Emulator palettes
 
-The current core defaults to the Emma 02 palette. MAME remains available as a
+The current core defaults to the Balanced palette. MAME remains available as a
 distinct alternative, along with source-look and combined-reference palettes.
 
 | Source | `0` | `1` | `2` | `3` |
 |---|---:|---:|---:|---:|
-| Core default / Emma 02 | `#004000` | `#70D0FF` | `#D0FF70` | `#FF7070` |
+| Core default / Balanced | `#11320C` | `#5A93D5` | `#B9B43D` | `#D14C38` |
+| Emma 02 | `#004000` | `#70D0FF` | `#D0FF70` | `#FF7070` |
 | MAME | `#004000` | `#AFDFE4` | `#B9C42F` | `#EF454A` |
 
 Source locations:
 
-- Current core: the `vis_rgb` lookup in `Studio-II.sv`.
+- Current core: the Visicom lookup in `rtl/studio2_palette.sv`.
 - MAME: `VISICOM_PALETTE` in
   <https://github.com/mamedev/mame/blob/master/src/mame/rca/studio2.cpp>.
 - Emma 02: the Visicom configuration in
@@ -303,9 +304,9 @@ machine reset behavior.
 
 The implemented Visicom design has three layers:
 
-1. A named built-in default, currently Emma 02. Changing the default after
+1. A named built-in default, currently Balanced. Changing the default after
    better evidence updates one palette definition, not the machine model.
-2. Named alternatives in [`palettes/README.txt`](../palettes/README.txt):
+2. Named alternatives in [`palettes/palettes-readme.txt`](../palettes/palettes-readme.txt):
    MAME, Emma 02, balanced, box-art print and adjusted, Nicole Express, and
    FLiP. Any palette derived from a capture or printed source must be labelled
    as that source's *look*, never as hardware truth.
@@ -313,10 +314,10 @@ The implemented Visicom design has three layers:
    running Quartus. This is the immediate path for applying new measurements or
    personal preferences before a core release adopts them.
 
-The `.vcp` format and MiSTer loading route are implemented. VCP and MiSTer
-Game Boy `.gbp` files use the same 16-byte format and lightest-to-darkest file
-ordering: four RGB888 entries followed by four reserved zero bytes. Ordinary
-`.gbp` files may therefore be loaded directly.
+The MiSTer loading route accepts Game Boy `.gbp` files: four RGB888 entries
+followed by four reserved bytes, in lightest-to-darkest file order. The palette
+is committed only after all 16 bytes arrive, and an incomplete transfer leaves
+the previous custom palette intact.
 
 Visicom consumes those four file entries in reverse hardware-index order:
 
@@ -335,11 +336,10 @@ colours; they are not claimed to form a strict luminance hierarchy.
 The following invariants describe the route and its acceptance requirements:
 
 - define exactly four RGB888 entries plus four reserved zero bytes;
-- accept `.vcp` and `.gbp` through the same byte ordering and lookup path;
+- accept ordinary `.gbp` files through the documented byte ordering and lookup path;
 - accept arbitrary 24-bit RGB values;
 - apply changes at the final indexed-colour lookup without a machine reset;
-- fall back safely to the selected built-in preset when a file is missing,
-  incomplete, or invalid;
+- retain the last complete custom palette when a file is missing or incomplete;
 - keep the accepted hardware default distinct from preference presets;
 - use one lookup path for built-in and custom palettes rather than parallel
   video implementations;

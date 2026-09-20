@@ -46,7 +46,10 @@ With Borders On, the area around the bitmap is active background video:
 - Studio III NTSC and PAL use the selected background once display and colour
   are enabled; before that, the border is black. The background steps through
   blue, black, green, and red. The top level uses `0x80` for asserted background
-  RGB channels and `0xFF` for foreground channels.
+  RGB channels and `0xFF` for foreground channels. The optional Prototype
+  setting instead maps the same three-bit colour output to a fixed RGB palette
+  approximating the surviving Studio III demo photographs, with each background
+  channel at half intensity. It does not alter colour selection or chip timing.
 - Visicom uses palette colour 0, initially `#11320C` (dark green). Loading a
   palette can change it.
 
@@ -105,6 +108,11 @@ it is 256 samples (64 x 4). `LINE_LENGTH=352` accommodates the full raster.
 
 Borders Off selects bitmap HBlank/VBlank before the mixer. It changes the
 presented active area without changing device HS, VS, or line/frame totals.
+Original aspect ratio and integer scaling preserve the bitmap's proportions
+from the 4:3 full raster: `(4/3) * (64/88) * (242/128) = 11/6` for NTSC,
+and `(4/3) * (64/88) * (292/192) = 146/99` for PAL. These ratios follow the
+implemented raster dimensions above, not a new hardware geometry measurement.
+Full Screen and custom aspect selections retain their existing behavior.
 The optional 216-line crop is enabled only when the framework reports 1920x1080
 and forced scandoubling is off. Direct Video reports zero scaler dimensions,
 so crop is disabled there. Crop changes DE, not sync; check its effect on a

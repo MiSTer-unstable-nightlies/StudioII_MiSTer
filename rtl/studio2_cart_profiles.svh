@@ -4,8 +4,8 @@
 // studio2_input_mapping.svh. Cases assign profile p, Start s and optional
 // normal-keypad b (1 = B). Unknown cartridges fall back to A-side 8-way.
 
-// TV Arcade I - Space War
-16'h45B5, 16'h977C:
+// TV Arcade I - Space War; archival combined Space War 2 + 3
+16'h45B5, 16'h977C, 16'h8B09:
 	begin
 
 		p = MAP_SPACEWAR;
@@ -126,9 +126,9 @@
 
 	end
 
-// Invaders v1/v2/v3 / Invaders Color
+// Invaders v1/v2/v3 / Invaders Colour v1/v2
 16'h6F69, 16'h7A5E, 16'hADAB, 16'h0D1D, 16'h69AA, 16'h2D86, 16'h5AC5,
-16'h937A, 16'hA9DA, 16'hFB00:
+16'h937A, 16'hA9DA, 16'hFB00, 16'h45DB, 16'h4A95:
 	begin
 
 		p = MAP_ROBSON;
@@ -147,8 +147,9 @@
 
 	end
 
-// Pacman / Pacman Visicom
-16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4, 16'hB99C:
+// Pacman / Pacman Visicom v1/v2
+16'hC556, 16'h5359, 16'hF4A1, 16'hE00A, 16'h9AF1, 16'h62B4, 16'hB99C,
+16'h85EE, 16'h5EC6:
 	begin
 
 		p = MAP_ROBSON;
@@ -179,10 +180,10 @@
 
 	end
 
-// Hockey v1/v2/v3 / Hockey Visicom v1/v2
+// Hockey v1/v2/v3 / Hockey Visicom v1/v2/v3
 16'h114A, 16'h4F55, 16'hD5DE,
 16'h554B, 16'h1154, 16'hDE71, 16'hD753,
-16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2, 16'hB075:
+16'h0D17, 16'hE320, 16'h63E5, 16'h8DD2, 16'hB075, 16'h0F35, 16'h6C9A:
 	begin
 
 		p = MAP_ROBSON2P;
@@ -222,7 +223,8 @@
 	end
 
 // Blackjack, Gambler I and Fun with Numbers: one-player B, selection A1.
-16'h29B8, 16'hAF65, 16'hC8B4, 16'hCEC2, 16'h5433, 16'hB7A7:
+16'h29B8, 16'hAF65, 16'hC8B4, 16'hCEC2, 16'h5433, 16'hB7A7,
+16'hDA61:
 	begin
 		p = MAP_8WAY;
 		s = 4'd1;
@@ -238,7 +240,7 @@
 	end
 
 // Numeric/keypad-heavy software: neutral automatic fallback
-16'h0ECC, 16'h31AE, 16'h3731, 16'h7A43,
+16'h0ECC, 16'h31AE, 16'h3731, 16'h7A43, 16'h937C, 16'hAC1E,
 16'h7D85, 16'h9D0D, 16'hB2FF, 16'hBBC8,
 16'hBD53, 16'hEE76:
 	begin
@@ -250,19 +252,37 @@
 	end
 
 // Gambler II: default to Slot Machine 1; play on B, selection on A.
-16'h2F1A, 16'hF178:
+16'h2F1A, 16'hF178, 16'hC106:
 	begin
 		p = MAP_8WAY;
 		s = 4'd5;
 		b = 1'b1;
 	end
 
-// Visicom Inspiration, Sansuu Drill,
-// Space Command, and Q-Sound Test: neutral automatic fallback
-16'h12E8, 16'h2BC5,
-16'h9BCF, 16'h9F6E, 16'hA7DF, 16'hBF97,
-16'hC106, 16'hC7C6, 16'hDCFA, 16'hE4C4,
-16'hEBF4:
+// Visicom Space Command: Horizontal Intercept, fire A2 and steer B4/B6.
+16'h12E8, 16'h2BC5, 16'hA7DF, 16'hBF97:
+	begin
+		p = MAP_SPACEWAR;
+		s = 4'd5;
+	end
+
+// Visicom Reikan: numbers on B; A5 selects Bagua and accepts each entry.
+16'hC7C6, 16'hE4C4:
+	begin
+		p = MAP_8WAY;
+		s = 4'd5;
+		b = 1'b1;
+	end
+
+// Visicom Sansuu Drill: setup and solo answers on A, starting with slow time.
+16'h9BCF, 16'hEBF4:
+	begin
+		p = MAP_8WAY;
+		s = 4'd1;
+	end
+
+// Q-Sound Test: neutral automatic fallback.
+16'h9F6E, 16'hDCFA:
 	begin
 
 		p = MAP_8WAY;
@@ -291,16 +311,17 @@
 
 	end
 
-// Race / Race Colour v1/v2
-16'h47EA, 16'h5374, 16'h5638, 16'h797C,
-16'hD6C0, 16'hFCC8:
+// Race / Race Colour / Race DX (thru v1.03)
+16'h1CA7, 16'h47EA, 16'h5374, 16'h5638, 16'h56C3, 16'h6664,
+16'h797C, 16'hC713, 16'hD6C0, 16'hFCC8, 16'h4DB8, 16'hE962,
+16'h9E23, 16'h7B00, 16'h55C5, 16'h8907, 16'h400A, 16'h9CC8:
 	begin
 
 		p = MAP_RACE;
 
 		s = 4'd2;
 
-	end
+	end 
 
 // Studio II Point of Sale Demonstration Cartridge
 16'hB334, 16'h3EAF:

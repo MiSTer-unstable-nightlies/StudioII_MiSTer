@@ -78,7 +78,8 @@ rm -rf -- \
     sys/.qsys_edit \
     sys/vip \
     new_rtl_netlist \
-    old_rtl_netlist
+    old_rtl_netlist \
+    dse
 
 find sys rtl -maxdepth 1 -type d -name '*_sim' -exec rm -rf -- {} + 2>/dev/null || true
 
@@ -86,6 +87,7 @@ rm -f -- \
     build_id.v \
     c5_pin_model_dump.txt \
     PLLJ_PLLSPE_INFO.txt \
+    dse_local_job_*.log \
     ./*.cdf \
     ./*.rpt
 

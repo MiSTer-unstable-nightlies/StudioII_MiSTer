@@ -1,6 +1,17 @@
 # Roadmap
 
-Developement is effectively done. Ideas for potential improvements are listed.
+Core features are implemented. Current integration and hardware-validation work
+is tracked here before the remaining longer-term ideas.
+
+## Active integration
+
+- Validate paged `.st2` overlays, Race Colour packages, firmware restoration on
+  unload, and controller profiles on physical MiSTer hardware.
+- Validate palette presets and custom `.gbp`/`.pal` loading over HDMI and direct
+  video. Verilator covers all preset mappings, both Studio III variants,
+  complete-file commits, and permissive Studio III trailing bytes.
+- Validate the implemented Controls and System OSD submenus on MiSTer. Existing
+  status fields are unchanged and ordinary software actions remain top-level.
 
 ## Keyboard and keypad ideas
 
@@ -44,14 +55,13 @@ banking design.
 
 ### Original-era CHIP-8 compatibility
 
-Maintain the [early CHIP-8 compatibility ledger](docs/os2-early-chip8.md), including
-the owner's hardware results, blocking instructions,
-and Marcel interpreter comparisons. Before redesigning OpenStudio2, account for
-native 1802 calls, original memory/register and display/interrupt conventions,
-and historical decoder behavior. Keep deliberate gaps documented. A future VIP
-core should treat these original programs as first-class compatibility cases,
-using their intended interpreter and exact images. Complete the native-call
-inventories and retest Dot-Dash on hardware with OS2's comparison decoder fix.
+Before redesigning OpenStudio2, account for native 1802 calls, original
+memory/register and display/interrupt conventions, historical decoder behavior,
+the owner's hardware results, blocking instructions, and Marcel interpreter
+comparisons. Keep deliberate gaps documented. A future VIP core should treat
+these original programs as first-class compatibility cases, using their intended
+interpreter and exact images. Complete the native-call inventories and retest
+Dot-Dash on hardware with OS2's comparison decoder fix.
 Do not count picture-only hybrids as interpreter blockers when a standard
 CHIP-8 conversion already exists. `Snoopy Cosmac picture.ch8` is covered by the
 portable 296-byte `Snoopy picture [Marco Varesio, 2015].ch8` and needs no

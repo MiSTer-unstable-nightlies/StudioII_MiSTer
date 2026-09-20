@@ -18,16 +18,16 @@ Supported hardware includes:
 
 Copy the release .rbf to e.g. /media/fat/_Console/ on MiSTer.
 
-Put the 4 BIOS files below in /media/fat/games/Studio-II/. [OpenStudio2](https://github.com/meauxdal/OpenStudio2) is bundled for CHIP-8 support. BIOS images can be found in the Emma 02 GitHub repository, e.g. [Studio II](https://github.com/etxmato/emma_02/blob/master/data/StudioII/studio2.rom).
+Put the 4 BIOS files below in /media/fat/games/Studio-II/. [OpenStudio2](https://github.com/meauxdal/OpenStudio2) is bundled for CHIP-8 support.
 
 | Machine | MiSTer filename | Common filename | Size | MD5 |
 |---|---|---|---:|---|
-| Studio II | boot0.rom | studio2.rom | 2 KB | B37205BF19B197682F00619D05DA194B |
+| Studio II | boot0.rom | [BIOS] RCA Studio II (USA).bin | 2 KB | B37205BF19B197682F00619D05DA194B |
 | Studio III PAL | boot1.rom | studio3_pal.bin | 4 KB | A6B94E449BC9EC58A30E1F75D590C558 |
 | Studio III NTSC | boot2.rom | studio3_ntsc.bin | 4 KB | 849A484AA4B2784ECE5C35C39D9D51A8 |
 | Visicom | boot3.rom | visicom.rom | 2 KB | AEEC6FE3934481E20EB7DB6D5FF56A54 |
 
-The above is not comprehensive; other firmwares are also compatible and can also be autoloaded by name as well as manually. Each machine remembers its own firmware during the session.
+Other firmware images may also work.
 
 ## Keypad and CLEAR
 
@@ -63,36 +63,30 @@ CHIP-8 uses the COSMAC VIP keypad:
 ```
 
 This keyboard layout is active only while a CHIP-8 program is loaded. Direct
-keypad bindings and Numstick continue to use keypad A for `0`–`9` and keypad B
-`1`–`6` for `A`–`F`.
+keypad bindings and Numstick continue to use keypad A for 0–9 and keypad B
+1–6 for A–F.
 
-The **CHIP-8** gamepad profile maps D-pad Up/Left/Down/Right to 5/7/8/9, Start to 1, Fire to F, and Extra to 0. There is probably a better mapping. Please create an issue if you have a suggestion.
+The CHIP-8 gamepad profile maps D-pad Up/Left/Down/Right to 5/7/8/9, Start to 1, Fire to F, and Extra to 0. There is probably a better mapping. Please create an issue if you have a suggestion.
 
-Marcel van Tongeren's chip8.bin interpreter has additional memory limitations. See Marcel van Tongeren's [informational page](https://emma02.hobby-site.com/studio_chip8.html) for more details.
+Marcel van Tongeren's chip8.bin interpreter has additional memory limitations. See Marcel van Tongeren's [informational page](https://emma02.hobby-site.com/studio_chip8.html) for more info.
 
-CHIP-8 cannot be used on Visicom due to the lack of a CHIP-8 interpreter.
+CHIP-8 cannot be used on Visicom (no CHIP-8 interpreter).
 
 ## Options
 
-**NE555 pitch** adjusts the Studio II and Visicom beeper tuning.
-
-**CDP1863 pitch** only applies to Studio III NTSC. The PAL option applies the CDP1864 divide-by-four stage for PAL-equivalent pitch on NTSC.
-
-**Load Palette** allows setting a 2-color (Studio II, CHIP-8) or 4-color (Visicom) color palette. MiSTer Game Boy .gbp palettes are supported. Example palettes are in [palettes](palettes/).
-
-**Clear** initializes (resets) the game or firmware you have running. It's a physical button on the hardware.
-
-**Unload Cartridge** ejects without resetting; video remains active and the previous firmware or resident-game mapping becomes visible again.
-
-**Unload Cartridge and Reset** ejects the active cartridge and resets the machine. 
+* Beeper pitch adjusts the Studio II and Visicom beeper tuning. 
+* CDP1863 pitch toggles Studio III NTSC's original pitch and the (less piercing) Studio III PAL pitch.
+* Studio II and Visicom custom palettes use 16-byte MiSTer Game Boy .gbp files. Studio II uses first and last .gbp colors for white/black respectively. Also works with CHIP-8.
+* Studio III custom palettes use a headerless .pal file. Eight sequential RGB888 entries (24 bytes); trailing bytes are ignored.
+* Clear initializes (resets) the game or firmware you have running. It's a physical button on the hardware.
 
 ## Controller profiles
 
-**Mapping: Auto** selects a controller profile from the cartridge CRC, falling back to 8-way for unknown games. Resident games can also select their profiles automatically. **Manual** allows direct profile selection. Game-specific controls are listed in [docs/how-to-play.md](docs/how-to-play.md).
+Mapping: Auto selects a controller profile from the cartridge CRC, falling back to 8-way for unknown games. Resident games can also select their profiles automatically. Manual exposes direct Joystick profile selection. Game-specific controls are listed in [docs/how-to-play.md](docs/how-to-play.md).
 
 ## Numstick (on-screen keypad)
 
-**Numstick** assigns the overlay to keypad A or B. The right stick selects 1–9 and the left stick selects 0. Hold a direction for about half a second to register it; nudge and release the right stick for 5.
+Numstick assigns an onscreen number pad overlay to keypad A or B. Hold the right stick in one of 8 directions to input corresponding number. Nudge and release stick to select center option.
 
 ## Studio IV
 

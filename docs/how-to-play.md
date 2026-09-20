@@ -267,6 +267,13 @@ Studio II-compatible cartridges above also run on several MPT-02-family machines
 - `A6` Addition: enter the displayed sum; quicker answers score more.
 - `A7` Freeway: `A5` starts/accelerates and `A4/A6` steer.
 
+### Space War 2 + 3 archival prototype
+
+The complete four-page archival object contains both related variants. Press
+`A1` for the Space War 2-style horizontal-intercept game or `A2` for the
+distinct two-player/vertical-intercept game. The surviving source notes do not
+document its play controls, so they remain unverified.
+
 ### A Cheap Graphics Computer
 
 Do not press CLEAR while changing modes; it destroys program data. Use `B0` to return to mode selection and save most CPU registers into RAM.
@@ -398,11 +405,10 @@ Game code is a bit sum: add 128 for plane, 64 for long-range missiles, 32 for sl
 
 ## Visicom COM-100
 
-Maintainer hardware testing on 2026-09-08 confirms all Visicom games are playable
-with the existing control schemes on the current build. This is overall
-playability confirmation; individual keypad details still marked unverified
-below need specific confirmation, and exact-image automated startup baselines
-have not been established by this report.
+Maintainer hardware testing on 2026-09-08 confirmed overall Visicom playability
+with the earlier mirrored controls; it does not verify the current Auto routing.
+The cartridge controls below follow the accompanying game text files. The Auto
+defaults need a fresh hardware check with Players Auto.
 
 Select the Visicom machine and use its firmware. `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded. After CLEAR, select a cartridge game directly; do not prefix its selector with `A0`.
 
@@ -444,9 +450,6 @@ Both games are for two players.
 
 ### Gambler I — Blackjack (CAS-140)
 
-**Unverified.** These controls match RCA Blackjack; the Visicom selection keys
-and behavior have not been confirmed.
-
 - CLEAR then `A1`: one player on B; CLEAR then `A2`: two players on A/B.
 - `0` cuts at CUT. At BET, `1`–`9` bet $1–$9 and `0` bets $10.
 - During a hand, `1` hits, `2` doubles down and `0` stands on the active pad.
@@ -457,8 +460,6 @@ and behavior have not been confirmed.
   `A1`. Players 1 explicitly mirrors controller 1 onto both pads.
 
 ### Gambler II (CAS-141)
-
-Individual keypad sequences below have not been separately verified.
 
 - `A5`: Slot Machine 1. It starts with 500 points and ends at zero or 1500.
   Bet 10-50 points with `B1`-`B5`, start the reels with `B0`, and hold `B5`
@@ -479,6 +480,12 @@ then direct `A0`; controllers 1/2 operate A/B independently. Start remains
 
 ### Reikan (CAS-190)
 
+The automatic `8-way` profile sends numeric input to B. Start sends `A5`,
+selecting Bagua after CLEAR and accepting entries during play. Fire enters `B5`
+and Extra enters `B0`; use the direct `A0` binding or on-screen keypad to correct
+an entry or return to category selection. Select other modes with direct `A6`
+or `A0` after CLEAR; Start still accepts with `A5`.
+
 Keypad B enters numbers and choices; keypad A confirms or corrects them.
 Numeric data is entered on B in two-digit groups. Press
 `A5` after each group; before accepting a mistaken group, `A0` restarts it.
@@ -495,12 +502,23 @@ alcohol, horse racing, love, money, travel, health, work and study.
 
 ### Space Command (CAS-160)
 
-**Unverified.**
+The automatic Space War profile selects Horizontal Intercept with Start (`A5`).
+With Players Auto, controller 1 supplies Fire (`A2`) and left/right (`B4/B6`).
 
-- `A5`: Horizontal Intercept, a single-player game.
-- `5` fires the missile. `4` and `6` steer left or right.
+- Horizontal Intercept allows one or more players taking turns, with 20 missiles
+  per player. The game ends when the missiles are exhausted or the fleet passes.
+- For Vertical Intercept, select manual `8-way`, press CLEAR, then direct `A0`.
+  Up supplies `2`: hold it to fire straight, release to angle downward, and press
+  again to turn upward. A solo player can use A with Players Auto; Players 2
+  splits A/B between controllers. Use direct `A0` to select it again; Start
+  retains the cartridge's Horizontal Intercept selection.
 
-- `A0`: Vertical Intercept, a two-player game.
-- Holding `5` increases missile height.
+### Sansuu Drill (CAS-110)
 
-- Controls *should* match TV Arcade I - Space War.
+The automatic `8-way` profile uses A for setup and solo answers. After CLEAR,
+Start sends `A1` to choose slow answer time; use `A2` for fast time. Next choose
+`A1` addition, `A2` subtraction, `A3` multiplication, `A4` division or `A5`
+combination. Choose difficulty `A1`–`A4` unless combination starts immediately.
+Directions supply digits `1/2/3/4/6/7/8/9`, Fire supplies `5`, and Extra supplies
+`0`. After ten problems, Extra (`A0`) replays the same settings. Players 2 lets
+two players answer independently on A/B.

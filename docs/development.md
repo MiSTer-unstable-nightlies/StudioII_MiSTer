@@ -1,16 +1,14 @@
 # Development reference
 
-Architecture, verification scope, and build mechanics here. `AGENTS.md` contains 
-permanent repository rules. RTL mostly speaks for itself; documentation and hardware 
-support it.
+Architecture, implementation constraints, verification scope, and build mechanics. `AGENTS.md` contains repository-wide coding rules. Keep transient investigations and release-specific notes out of this file.
 
-Read the focused references when relevant:
+Focused references:
 
-- `docs/how-to-play.md` — game selection and keypad research.
-- `docs/controller.md` — controller implementation and identification rules.
-- `docs/beeper-status.md` — Studio II audio evidence and current acceptance criteria.
-- `docs/analog-video.md` — direct-video behavior and hardware test procedure.
-- `roadmap.md` — planned work.
+- `docs/how-to-play.md` - game selection and keypad research.
+- `docs/controller.md` - controller implementation and identification rules.
+- `docs/beeper-status.md` - Studio II audio evidence and acceptance criteria.
+- `docs/analog-video.md` - direct-video behavior and hardware test procedure.
+- `roadmap.md` - planned work.
 
 ## Implemented machines
 
@@ -19,79 +17,90 @@ Read the focused references when relevant:
 | Studio II | CDP1861, NTSC mono | discrete beeper | primary target |
 | Studio III PAL | CDP1864 | CDP1864 tone | 312-line PAL timing |
 | Studio III NTSC | CDP1861 + CDP1862 | CDP1863 | 1861 timing with separate colour |
-| Visicom COM-100 | CDP1861 + second DMA bitplane | NE555 compatibility beeper | separate memory map and selectable indexed palette |
+| Visicom COM-100 | CDP1861 + second DMA bitplane | NE555 compatibility beeper | separate memory map and indexed palette |
 
-The CPU, DMA video, raw and paged cartridges, four native firmware slots plus 
-the CHIP-8 interpreter slot, machine memory maps, controller profiles, 
-on-screen keypad, integer scaling, and sync-preserving same-standard resets are 
-implemented. The loader intentionally models only 4 KB of cartridge address space; 
-high-page diagnostics such as ST3CTA Tester 3 remain unsupported.
+The core implements CPU and DMA video, raw and paged software loading, four native firmware slots, the CHIP-8 interpreter slot, machine-specific memory maps, controller profiles, on-screen keypad support, integer scaling, custom palettes, and sync-preserving same-standard resets.
 
-## Module and clock map
+The loader models 4 KB of software address space. Pages `$10+` are not supported.
 
-`Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU, 
-memory maps, cartridge loader, keypad/controller mapping, and machine selection. 
-`rtl/audio/studio2_beeper.sv` contains the Studio II/Visicom NE555 beeper. The 
-CRC-to-profile database is included from `rtl/studio2_cart_profiles.svh`.
+The CDP1802 implements all four CLEAR/WAIT operating modes. LOAD holds S1 idle, services DMA through R(0), and returns to LOAD after each transfer. Software should pass through RESET before RUN so R(0) restarts at `$0000`.
 
-The Studio II/Visicom NE555 pitch selector occupies `status[19:17]`. Codes 0--6
-are Original, High, Higher, Highest, Lowest, Lower, and Low; unused code 7
-decodes to Original. Low/High, Lower/Higher, and Lowest/Highest apply one, three,
-and six cumulative steps of the original reciprocal 31:32 frequency ratio.
-Tuning scales the latched full oscillator period before its 11:6 phase split,
-leaving the accepted state trajectory and all time-domain envelope behavior
-unchanged.
-The OSD exposes the selector for Studio II and Visicom and hides it for both
-Studio III variants.
+## Main modules
 
-The Studio III NTSC tone-pitch selector occupies `status[20]`. Zero keeps the
-standalone CDP1863's native pitch; one selects the CDP1864 divide-by-four stage
-and matches PAL pitch. The OSD enables the field only when the active machine is
-Studio III NTSC. It changes only the divider-stage input to the shared generator,
-so the latch, counter, output phase, and reset behavior remain a single live state.
+`Studio-II.sv` is the MiSTer `emu` top. `rtl/rcastudioii.sv` contains the CPU integration, memory maps, software loader, keypad/controller mapping, and machine selection.
 
-Video crop enable occupies `status[21]`, crop offset `status[25:22]`, and border
-hiding `status[26]`. The crop follows the common NES/SNES MiSTer convention: it
-is enabled only for an un-doubled 1920x1080 scaler output and supplies a 216-line
-window to `video_freak`. Border hiding selects bitmap-window blanking while
-leaving device counters and HS/VS unchanged.
+Important supporting modules:
 
-Live video modules:
+- `rtl/cdp1802.v` - CDP1802 CPU.
+- `rtl/audio/studio2_beeper.sv` - Studio II/Visicom NE555 beeper.
+- `rtl/pixie/cdp1861.v` - Studio II, Studio III NTSC, and Visicom timing/DMA.
+- `rtl/pixie/cdp1862.v` - Studio III NTSC colour.
+- `rtl/pixie/cdp1863.v` - Studio III NTSC tone and shared divider model.
+- `rtl/pixie/cdp1864.v` - Studio III PAL video, colour, and tone timing.
+- `rtl/pixie/pixie_video.v` - CDP1861 wrapper.
+- `rtl/studio2_palette.sv` - built-in presets, custom palette commits, and final RGB selection.
+- `rtl/studio2_cart_profiles.svh` - CRC-to-controller-profile database.
 
-- `rtl/pixie/cdp1861.v` — Studio II, Studio III NTSC, and Visicom timing/DMA.
-- `rtl/pixie/cdp1862.v` — Studio III NTSC colour.
-- `rtl/pixie/cdp1863.v` — Studio III NTSC tone and shared divider model.
-- `rtl/pixie/cdp1864.v` — Studio III PAL video, colour, and tone timing.
-- `rtl/pixie/pixie_video.v` — 1861 wrapper.
+## Clocking
 
-`clk_sys` is about 7.040229 MHz. `ce_pix` divides it by four to the approximately 
-1.760 MHz machine timebase; CPU machine cycles occur every eight `ce_pix` pulses. 
-MiSTer video is resampled into `clk_vid` at about 42.24 MHz and presented to 
-`video_mixer` at about 7.04 MHz, repeating each native pixel four times.
+`clk_sys` is about 7.040229 MHz. `ce_pix` divides it by four to the approximately 1.760 MHz machine timebase. CPU machine cycles occur every eight `ce_pix` pulses.
 
-The Verilator harness normally holds `ce_pix` high. Use `--ce4` for reset release, 
-CLEAR, DMA/CPU phase, or other clock-structure work, `--press-phase N` to sweep 
-phase-sensitive input, `--beeper-tune medium|high|higher|highest|lowest|lower|low` 
-to select the Studio II tuning (`medium` selects Original), and 
-`--ntsc-tone-pitch original|pal` to select the Studio III NTSC pitch. The harness 
-instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS 
-boot ordering, Apply classification, OSD menu masking, or F1-F4 sync preservation.
+MiSTer video is resampled into `clk_vid` at about 42.24 MHz and presented to `video_mixer` at about 7.04 MHz, repeating each native pixel four times.
+
+The Verilator harness normally holds `ce_pix` high. Use `--ce4` when reset release, CLEAR, DMA/CPU phase, or other clock-structure behavior matters. The harness instantiates `rtl/rcastudioii.sv`, not the MiSTer top, so it cannot prove HPS boot ordering, OSD masking, Apply classification, or top-level sync-preservation behavior.
+
+## OSD and status ownership
+
+Frequently used controls remain at the top level. Audio/video, palette, and replacement-firmware controls are grouped into submenus.
+
+Relevant status fields:
+
+| Field | Function |
+|---|---|
+| `status[5:2]` | manual joystick profile |
+| `status[6]` | automatic/manual mapping |
+| `status[8:7]` | player routing |
+| `status[10:9]` | Numstick |
+| `status[12:11]` | scaler mode |
+| `status[14:13]` | staged machine selection |
+| `status[15]` | Apply and Reset |
+| `status[16]` | sound mute |
+| `status[19:17]` | Studio II/Visicom NE555 pitch |
+| `status[20]` | Studio III NTSC CDP1863 pitch |
+| `status[21]` | 216p crop enable |
+| `status[25:22]` | crop offset |
+| `status[26]` | borders |
+| `status[33:31]` | Studio II palette |
+| `status[36:34]` | Visicom palette |
+| `status[39:37]` | Studio III palette |
+
+`status_menumask` hides controls that do not apply to the active machine. Custom palette loader rows appear only when the corresponding machine is active and its palette selector is set to Custom.
+
+The System submenu contains Machine ROM and CHIP-8 Core replacement. Load Software, Load CHIP-8, Machine, Apply and Reset, Clear, Reset, Unload Software, and Unload Software and Reset remain at the top level.
+
+## Audio
+
+The Studio II/Visicom NE555 pitch selector provides Original, High, Higher, Highest, Lowest, Lower, and Low. Tuning scales the latched full oscillator period before the 11:6 phase split; it does not replace or restart the generator state.
+
+The Studio III NTSC CDP1863 pitch selector provides native pitch or the CDP1864 divide-by-four stage for PAL-equivalent pitch. The same live generator state is retained when the divider selection changes.
+
+Muting gates the final audio output. Tone generators continue running while muted.
+
+## Palette model
+
+Studio II and Visicom custom palettes use 16-byte MiSTer Game Boy `.gbp` files. Studio III custom palettes use eight sequential RGB888 entries in a headerless `.pal` file.
+
+Custom palette data is staged and committed only after a complete file has arrived. Studio III commits after byte 23 and ignores trailing bytes. Palette loading never resets the machine.
+
+Built-in selections are owned by `rtl/studio2_palette.sv`:
+
+- Studio II: Original, Amber, Green, Inverted, Custom.
+- Studio III: Original, Prototype, Warm, Cool, Custom.
+- Visicom: Balanced, Box Art, Emma 02, FLiP, MAME, Manuals, Nicole Express, Custom.
 
 ## Video behavior
 
-Studio III NTSC uses `INP 1` for display enable and `OUT 1` for the CDP1862
-background step, with no software display-off port in
-[Emma 02's Studio III NTSC configuration](https://github.com/etxmato/emma_02/blob/master/data/Xml/StudioIII/standard-ntsc.xml).
-The Studio II `OUT 1` display-off decode must not apply to Studio III NTSC.
-PAL retains `INP 4` display-off; CLEAR/download blanking remains independent.
-
-The reported NTSC blackout after one player's Bowling frame and on selecting
-Blackjack (A4/A5) is consistent with the previous erroneous `OUT 1` disable.
-The decode is corrected, but the reported gameplay sequence still needs replay
-on MiSTer. Grand Pack's eight pages (`04-07`, `0C-0F`) exactly match those in
-`rom/studio3_ntsc.bin` (CRC16 `ED56`), so the cartridge and resident failures
-exercise identical game code. This is not evidence that every firmware variant
-is defective. Doodle/Patterns A1/A2 work in the user's report; A0 is unconfirmed.
+Studio III NTSC uses `INP 1` for display enable and `OUT 1` for the CDP1862 background step. The Studio II `OUT 1` display-off decode must not apply to Studio III NTSC. Studio III PAL retains `INP 4` display-off behavior.
 
 The normal output path is:
 
@@ -103,26 +112,15 @@ rcastudioii sync + blanking + RGB
     -> MiSTer framework
 ```
 
-`video_mixer` derives raster DE from HBlank/VBlank. The core's
-`video_de`/`bitmap_de` is only for simulation and bitmap capture.
-The top level may instead present the bitmap-specific HBlank/VBlank when Borders
-is Off; this changes the active window without changing raster or sync timing.
+`video_mixer` derives raster DE from HBlank/VBlank. The core's `video_de` and `bitmap_de` are simulation/capture signals. Borders Off substitutes bitmap-window blanking without changing the device raster counters or HS/VS timing.
 
-The CDP1861 path has 112 native pixel times and 262 lines per frame. Raster active starts at pixel 24 and is 88 pixels wide. Bitmap DMA occupies pixels 40–103, leaving the authored window 16 pixels from the raster's left edge and eight from the right. Do not move the bitmap window to centre it; adjust porches/blanking and revalidate timing instead.
+The CDP1861 path has 112 native pixel times and 262 lines per frame. Raster active starts at pixel 24 and is 88 pixels wide. Bitmap DMA occupies pixels 40-103. The authored 64-pixel bitmap window is therefore not centered within the full raster and should not be moved merely for presentation.
 
-The CDP1864 path has 112 native pixel times, 312 lines, and a 192-line display. Switching between PAL and NTSC will generally make the display resync; this is expected.
+The CDP1864 path has 112 native pixel times, 312 lines, and a 192-line display. Switching between PAL and NTSC normally causes the display to resync.
 
-Integer scaling depends on two top-level integration details:
+`video_mixer.LINE_LENGTH` is 352, covering the full 88-pixel raster at 4x. VS is delayed by one `CE_PIXEL` only at the `video_freak` input so its active-line count survives the same-edge reset.
 
-1. `video_mixer.LINE_LENGTH` is 352, the full 88-pixel raster width x4 and the
-   maximum needed when the optional 64-pixel borderless window is selected.
-2. VS is delayed by one `CE_PIXEL` only on the `video_freak` input so its final active-line count is not overwritten by a same-edge reset.
-
-The OSD exposes scale modes 0–3 with `.SCALE({1'b0, status[12:11]})`; mode 4 is intentionally absent.
-At a 1920x1080 scaler resolution, the optional 216-line vertical crop permits
-the existing integer modes to select 5x vertically. Crop offset uses the standard
-MiSTer `0, 2, 4, 8, 10, 12, -12, -10, -8, -6, -4, -2` choices. Other HDMI
-resolutions, Direct Video, and forced scandoubling leave vertical crop disabled.
+The optional 216-line crop applies only to an undoubled 1920x1080 scaler output. Other HDMI resolutions, Direct Video, and forced scandoubling leave it disabled. When borders are hidden, the original-aspect-ratio calculation compensates for the reduced active window rather than forcing the cropped bitmap to 4:3.
 
 ## Reset and machine selection
 
@@ -131,17 +129,22 @@ CPU/machine reset and raster reset are separate. `reset` restarts machine state;
 | Event | Class | Raster behavior |
 |---|---|---|
 | Core load, MiSTer reset, unknown download | hard | restarts |
-| Cartridge load (F1) | sync-preserving | remains live |
-| CHIP-8 load (F3) | sync-preserving | remains live |
-| Manual firmware load (F2) | sync-preserving | remains live |
-| Manual CHIP-8 interpreter load (F4) | sync-preserving | remains live |
-| Same-standard Apply and reset | sync-preserving | remains live |
-| PAL/NTSC Apply and reset | hard | restarts |
+| Software load | sync-preserving | remains live |
+| CHIP-8 load | sync-preserving | remains live |
+| Machine ROM load | sync-preserving | remains live |
+| CHIP-8 Core load | sync-preserving | remains live |
+| Custom palette load | none | remains live |
+| Same-standard Apply and Reset | sync-preserving | remains live |
+| PAL/NTSC Apply and Reset | hard | restarts |
 | CLEAR | sync-preserving | remains live |
 
-Download type remains latched through the post-download reset stretch because `ioctl_index` is valid only during transfer. Apply/reset records whether the requested machine crosses standards before changing `machine_active`. Hard reset sources always dominate overlaps. CLEAR is normal console operation; its special case leaves the Studio III tone generator running.
+Download type is latched through the post-download reset stretch because `ioctl_index` is valid only during transfer. Apply and Reset determines whether a machine change crosses video standards before updating `machine_active`. Hard reset sources dominate overlaps.
 
-The Machine OSD field is staged until **Apply and reset**, except for the short boot-follow path used to restore saved settings. Firmware slots are:
+CLEAR is normal console operation, not a generic hard reset. Its special handling leaves the Studio III tone generator running.
+
+## Firmware and download routes
+
+The Machine field is staged until **Apply and Reset**, apart from the boot-follow path used to restore saved settings.
 
 | Machine | File |
 |---|---|
@@ -149,90 +152,69 @@ The Machine OSD field is staged until **Apply and reset**, except for the short 
 | Studio III PAL | `boot1.rom` |
 | Studio III NTSC | `boot2.rom` |
 | Visicom | `boot3.rom` |
-| CHIP-8 interpreter | Bundled OpenStudio2; F4 manual override |
+| CHIP-8 interpreter | bundled OpenStudio2; optional F4 override |
 
-Studio II firmware is normally 2 KB; each resident BRAM is 4 KB so Studio III firmware fits. F2 writes the active machine's slot. MiSTer Main autoloads `boot0.rom` through `boot3.rom`, using index `[7:6]` for those four slots.
+Studio II firmware is normally 2 KB. Each resident firmware BRAM is 4 KB so Studio III firmware fits. F2 writes the active machine slot.
 
-The fifth BRAM (`rom4`) starts with bundled OpenStudio2 via the optional `dpram.init_file_g` parameter and `$readmemh`. `rom/openstudio2.hex` defines all 4096 bytes: the 2 KB interpreter followed by 2 KB of `FF`. Its MIT notice, source revision, and checksums are in `rom/openstudio2.md`. Both interpreter-available and OS2-type flags start true. Ports and synchronous read timing are unchanged.
+The fifth BRAM starts with bundled OpenStudio2. F4 replaces that shared interpreter bank with a manually loaded Marcel or OpenStudio2 image. Loading an interpreter does not itself enter CHIP-8 mode. Ordinary reset, unload, and machine changes retain the override; reloading the core restores the bundled image.
 
-F3 selects a `.ch8` at `$0003` without requesting a companion file. F4 explicitly replaces the shared interpreter bank with a selected binary at `$0004`: 768 bytes selects Marcel; 2 KB selects OpenStudio2. The legacy supplemental `$0103` loader route remains accepted for existing simulation coverage, but the OSD no longer requests it. Starting an override invalidates the cached interpreter and exits the current game. Loading an interpreter does not itself activate CHIP-8. Ordinary resets, unloads, and machine switching retain the override; reloading the core restores the bundled image. F3 is disabled on Visicom.
+The low six bits of `ioctl_index` select the user download route:
 
-Quartus resolves the repository-relative image path with `files.qip` including the ROM search directory. The Verilator Makefile supplies an absolute path to the same bundled file for both GUI and headless models, so runtime working directory does not affect lookup. Both model targets depend on the image, so changing it invalidates the build. No neighboring OpenStudio2 checkout is required.
+| Index | OSD action | Format | Reset behavior |
+|---:|---|---|---|
+| `0` | boot firmware/autoload | ROM | hard during core boot |
+| `1` | Load Software | `.st2`, `.bin`, `.rom` | sync-preserving soft reset |
+| `2` | Load Machine ROM | `.bin`, `.rom` | sync-preserving soft reset |
+| `3` | Load CHIP-8 | `.ch8` | sync-preserving soft reset |
+| `4` | Load CHIP-8 Core | `.bin`, `.rom` | sync-preserving soft reset |
+| `5` | Visicom custom palette | `.gbp` | none |
+| `6` | Studio II custom palette | `.gbp` | none |
+| `7` | Studio III custom palette | `.pal` | none |
 
-Embedding verification remains pending: build with `make -C verilator headless`, then run `bash tools/chip8-loader-test.sh`. The loader check preserves and compares the initialized bank, including its unused half, and covers no-override loads on all machine selections and explicit overrides. Follow with successive game loads, CLEAR/reset/unload, machine switching, and Marcel/development override gameplay checks. A user-run Quartus 17.0.x GUI build must confirm block RAM inference and timing, followed by a MiSTer cold start without `chip8.bin` (also check that an old companion file is ignored).
+## Memory and software loading
 
-## Memory and cartridge model
-
-Studio II / Studio III NTSC base behavior:
+Studio II / Studio III NTSC base map:
 
 - `$0000-$07FF`: firmware/resident games.
 - `$0800-$09FF`: 512-byte RAM.
 - `$0A00-$0BFF`: cartridge window.
-- `$0C00-$0DFF`: RAM mirror unless paged cartridge ROM owns it.
+- `$0C00-$0DFF`: RAM mirror unless paged software owns it.
 - `$0E00-$0FFF`: cartridge window.
 - Undecoded reads return `$FF`.
 
-Studio III may use 4 KB firmware and has 64 mirrored 3-bit colour cells in `$0B00-$0BFF`. A DMA offset selects `{offset[7:5], offset[2:0]}`, so one cell covers eight pixels by four logical bitmap rows.
+Studio III may use 4 KB firmware and has 64 mirrored 3-bit colour cells in `$0B00-$0BFF`. CPU reads return the stored colour in bits 2:0 with bits 7:3 clear. CPU access uses the low six address bits; DMA uses `{offset[7:5], offset[2:0]}`.
 
-Visicom uses `$0000-$07FF` for resident ROM and `$0800-$0FFF` for the current cartridge, `$1000-$11FF` for 512-byte RAM and plane 0, `$1300-$13FF` for plane 1, and leaves `$1200-$12FF` empty. Cartridge pages omitted by the current image read as open bus (`$FF`), even if an earlier cartridge wrote those BRAM locations. Its two plane bits select one of four fixed colours.
+Visicom uses `$0000-$07FF` for resident ROM, `$0800-$0FFF` for the loaded cartridge, `$1000-$11FF` for RAM/plane 0, `$1300-$13FF` for plane 1, and leaves `$1200-$12FF` empty. Omitted cartridge pages read as open bus (`$FF`).
 
-Raw `.bin`/`.rom` images load from `$0400` on Studio machines and `$0800` on Visicom. `.st2` is detected from `RCA2` magic and uses its header page table. Page ownership permits cartridge pages `$0C/$0D` to replace the normal RAM mirror. Studio II rejects system pages `$00-$03` and RAM pages `$08-$09`; Studio III also reserves colour page `$0B`; Visicom accepts only its cartridge pages `$08-$0F`, preserving resident pages `$00-$07`. Pages `$10+` are dropped.
+Raw `.bin`/`.rom` images load from `$0400` on Studio machines and `$0800` on Visicom.
 
-With bundled OpenStudio2, F3 `.ch8` bytes `$000-$DFF` load at offsets
-`$200-$FFF` in separate 4 KB CHIP-8 RAM, mapped to CPU `$1000-$1FFF`.
-Later bytes are dropped. Interpreter ROM remains in the existing fifth bank.
+`.st2` files are detected by `RCA2` magic and use the header page table. On Studio II and Studio III, valid mapped pages `$00-$07` may overlay resident ROM without modifying firmware BRAM. Pages `$0C/$0D` may replace the normal RAM mirror. Pages `$08-$09` remain RAM and are rejected; Studio III also reserves colour page `$0B`. Visicom accepts only cartridge pages `$08-$0F`. Pages `$10+` are dropped.
 
-With a Marcel override, F3 `.ch8` bytes `$000-$4FF` map to physical ROM `$0300-$07FF`; bytes
-`$500-$8FF` map to `$0C00-$0FFF`; bytes from `$900` onward are dropped. This
-path requires a complete manually loaded Marcel interpreter,
-and rejects Visicom in RTL as well as in the OSD.
-Activation selects the fifth ROM on Studio II and both Studio III variants,
-without changing the native RAM or Studio III colour-RAM windows. CLEAR, Reset,
-and machine switches retain the game; F1, F2, and interpreter overrides
-exit CHIP-8 mode. Loading a replacement interpreter also clears the prior
-program before the replacement arrives.
+Unloading clears page ownership and exposes resident firmware again.
 
-[Marcel van Tongeren's interpreter map](https://www.emma02.hobby-site.com/studio_chip8.html)
-accounts for the complete physical 4 KB bank:
+Controller automapping hashes the exact downloaded bytes with CRC16-CCITT, polynomial `0x1021`, initial value `0xFFFF`. Headered and raw representations therefore have different CRCs even when their program payloads match.
 
-| Studio address | Interpreter use | CHIP-8 view |
-|---|---|---|
-| `$0000-$02FF` | Interpreter | — |
-| `$0300-$07FF` | First program window | `$0200-$06FF` |
-| `$0800-$089F` | Writable game RAM | `$0B00-$0B9F` through `I` translation |
-| `$08A0-$08CF` | CHIP-8 stack | — |
-| `$08D0-$08EF` | Interpreter work area | — |
-| `$08F0-$08FF` | Registers V0–VF | — |
-| `$0900-$09FF` | Display RAM | — |
-| `$0A00-$0BFF` | Unused by the interpreter | — |
-| `$0C00-$0FFF` | Second program window | `$0700-$0AFF` |
+## CHIP-8
 
-Thus the program address ceiling is virtual `$0AFF`: a conventional `.ch8`
-file begins at `$0200`, so its supported payload is `$900` bytes at file offsets
-`$000-$8FF`. JP and CALL cannot target virtual `$0800-$0BFF`. Writes through
-`I` are translated into the small `$0B00-$0B9F` virtual RAM window and are only
-compatible with simple RAM use; software depending on broader or
-self-modifying program memory generally needs adaptation.
+With bundled OpenStudio2, `.ch8` bytes `$000-$DFF` load at offsets `$200-$FFF` in separate 4 KB CHIP-8 RAM mapped to CPU `$1000-$1FFF`. Later bytes are dropped. Interpreter ROM remains in the fifth ROM bank.
 
-Controller automapping hashes exact downloaded bytes using CRC16-CCITT, polynomial `0x1021`, initial value `0xFFFF`. Headered and raw forms have different CRCs even when their payloads match.
+With a Marcel override, `.ch8` bytes `$000-$4FF` map to physical ROM `$0300-$07FF`; bytes `$500-$8FF` map to `$0C00-$0FFF`; later bytes are dropped. This path is unavailable on Visicom.
 
-## Controllers
-
-Controller architecture and profile identification are documented in
-`docs/controller.md`. Game-control evidence belongs in `docs/how-to-play.md`.
+Marcel's interpreter has a virtual program ceiling of `$0AFF` and only a small translated writable-RAM window. Software that relies on broader writable or self-modifying CHIP-8 memory should use OpenStudio2 instead.
 
 ## Hardware-derived constraints
 
-- The Studio II has 512 bytes of paired nibble RAM; bitmap memory runs from `$0900` at top left through `$09FF` at bottom right, eight bytes per logical row, bit 7 leftmost.
+- Studio II has 512 bytes of paired nibble RAM. Bitmap memory runs from `$0900` at top left through `$09FF` at bottom right, eight bytes per logical row, bit 7 leftmost.
 - The physical data bus has pull-ups, supporting open-bus reads of `$FF`.
-- Physical keypad selection is `N1 AND TPB`; software uses `OUT 2`, which is what the core decodes.
-- The CDP1861 requests eight DMA-OUT cycles for each displayed scanline and the CPU supplies bytes through R0. Software repeats 32 logical bitmap rows into 128 active bitmap lines.
-- The Studio II is NTSC-only and uses an adjusted RC oscillator; its approximately 1.760 MHz clock is a practical model, not an exact crystal constant.
-- CDP1861/CDP1864 EF timing leads nominal line boundaries deliberately. Interrupt and DMA requests are accepted at instruction boundaries, DMA remains asserted until serviced, and parity adaptation may move service by one machine cycle.
-- `CON` is captured with each luminance DMA byte. Studio III NTSC is a 1861+1862+1863 machine, not a retimed 1864; its native 1863 tone is four times the 1864-integrated tone for the same latch. The optional PAL-pitch setting selects the shared model's divide-by-four stage without resetting or duplicating generator state.
+- Physical keypad selection is `N1 AND TPB`; software uses `OUT 2`.
+- CDP1861 requests eight DMA-OUT cycles for each displayed scanline and the CPU supplies bytes through R0.
+- Studio II is NTSC-only and uses an adjusted RC oscillator; the approximately 1.760 MHz core clock is a practical hardware-derived model, not an exact crystal constant.
+- CDP1861/CDP1864 EF timing deliberately leads nominal line boundaries. Interrupt and DMA requests are accepted at instruction boundaries, and DMA remains asserted until serviced.
+- `CON` is captured with each luminance DMA byte.
+- Studio III NTSC is a CDP1861 + CDP1862 + CDP1863 machine, not a retimed CDP1864 implementation.
 - In the CPU Cx row, `C4` is NOP and `C5-C7`/`CC-CF` are long skips.
 
-## Verification and local layout
+## Verification
 
 No single test establishes overall accuracy:
 
@@ -245,152 +227,40 @@ No single test establishes overall accuracy:
 | Quartus reports | inference, fit, timing closure | runtime correctness |
 | MiSTer testing | complete built integration | exhaustive internal state |
 
-Canonical paths are `rom/` for firmware, `software/` for the corpus, `tools/refemu/` for the reference emulator, `verilator/obj_dir_headless/Vtop` for the headless model, and `out/` for generated captures. `refs/` is optional research material and must not be a normal build dependency. Scripts derive the repository root from their own location; never embed a maintainer's private path.
+Canonical paths are `rom/` for firmware, `software/` for the corpus, `tools/refemu/` for the reference emulator, `verilator/obj_dir_headless/Vtop` for the headless model, and `out/` for generated captures. `refs/` is optional research material and must not be a normal build dependency.
 
-Local builds normally use the Quartus 17.0.x GUI: open `Studio-II.qpf` and use
-**Processing > Start Compilation** (or **Start > Start Analysis & Synthesis**
-for a map-only check). After RAM changes, inspect
-`output_files/Studio-II.map.rpt` for inferred `altsyncram` instances.
+Primary directed checks include:
 
-The current Windows installation is `C:\intelFPGA_lite\17.0\quartus\bin64`.
-For an explicitly requested command-line build, run from the repository root
-in PowerShell:
+- `tools/memdecode-test.sh`
+- `tools/chip8-loader-test.sh`
+- `tools/visicom-loader-test.sh`
+- `tools/tone-test.sh`
+- `tools/verify-beeper.sh`
+- `make -C verilator cpu-load-test`
+- `make -C verilator palette-test`
 
-```powershell
-& 'C:\intelFPGA_lite\17.0\quartus\bin64\quartus_sh.exe' --flow compile Studio-II
-# Analysis & synthesis only:
-& 'C:\intelFPGA_lite\17.0\quartus\bin64\quartus_map.exe' Studio-II
-```
+`tools/rtl-regression.sh` rebuilds the headless and CPU-only models, runs the LOAD test, and then runs the headless smoke suite. Use targeted tests while developing and the full regression before release.
 
-No PATH change is needed with these absolute paths. Verify the installation path
-on other machines. `tools/quartus-build.sh` is a separate, Docker-only workflow
-for the amd64 Quartus 17 container; its `--parallel=1` workaround is for Apple
-Silicon emulation. It is not the default local build command.
+`tools/game-start-sweep.py` remains available for exact-image startup and screenshot regression work. Its output is evidence of repeatability for the tested image, machine, input sequence, and capture settings; it is not proof of complete gameplay accuracy.
 
-Directed checks include `tools/memdecode-test.sh`, `tools/chip8-loader-test.sh`, `tools/visicom-loader-test.sh`, `tools/tone-test.sh`, and `tools/verify-beeper.sh`. The old corpus runners (`score-21.sh`, `score-conic.sh`, `play-test.sh`, `probe-keys.sh`, `visicom-test.sh`, and `contact-sheet.py`) are disabled because they use obsolete dump paths. Use the game-start sweep below for game captures. Synthetic device/loader tests remain separate from game-start discovery.
+## Building
 
-Run `bash tools/headless-smoke.sh` in the configured Verilator build shell for
-the existing loader/input, memory, CHIP-8, Visicom ownership, and tone checks.
-It never builds: missing output or an unsuccessful `make -q` freshness check
-stops the suite. Build explicitly with `make -C verilator headless` first;
-the headless target tracks the RTL's `.svh` includes as well as source files.
-Freshness uses dependency timestamps, not a content-addressed build record.
-The suite needs Bash, make, Python 3, and GNU timeout, plus the firmware used by
-the existing checks. The CHIP-8 loader check generates its own interpreter-sized
-byte fixture; it tests routing and acceptance, not interpreter execution.
-Each check has a 120-second limit (`HEADLESS_TIMEOUT` overrides seconds), and
-each invocation retains separate logs in a new `out/headless-smoke.*` directory.
-Any failed or timed-out check makes the suite return nonzero; remaining checks
-still run. `tools/verify-beeper.sh` stays separate because it starts builds.
+The project targets Quartus 17.0.x. The normal local flow is to open `Studio-II.qpf` and compile in Quartus. After RAM-related changes, inspect `output_files/Studio-II.map.rpt` for the expected `altsyncram` inference.
 
-`python3 -B tools/test-headless-smoke.py` exercises crash propagation, empty
-measurements, stale-build rejection, timeouts, and log retention using substitute
-programs; it does not run RTL. Individual directed scripts accept `HEADLESS_SIM`
-for these negative controls; the suite always selects the canonical model.
-These checks establish runner behavior, not that every RTL assertion detects
-the corresponding hardware defect. The simulator returns an error if it stops
-before completing the requested frames or loader downloads. An intentionally
-disabled display remains valid for audio-only tests.
-
-The focused input/display checks in `--loader-check` cover Pinball CRC selection,
-Grand Pack's PAL/NTSC menu selection and unload, Climber directions, and `OUT 1`
-display enable. To build and run these checks separately:
+The Verilator headless model is built with:
 
 ```sh
 make -C verilator headless
-verilator/obj_dir_headless/Vtop --bios rom/studio2.rom --loader-check --quiet
 ```
 
-Expected result: `Loader and input checks: PASS (0 mismatches)`. These directed
-checks do not replace gameplay verification on MiSTer.
-
-## Game-start screenshot sweep
-
-`tools/game-start-sweep.py` accepts only `.st2` cartridges. The default folders
-are configured in `tools/game-starts.json`:
-
-- `software/RCA-Studio-II-Fullset/1 Studio II - MPT-02`
-- `software/RCA-Studio-II-Fullset/1 Visicom COM-100`
-
-No resident-only cases, raw dumps, archives, homebrew or other corpus folders
-are included by default. Repeat `--folder PATH` to replace the default folders
-with explicitly selected locations. Paths supplied on the command line are relative
-to the current directory; manifest folder and firmware paths are relative to the
-repository root. Missing folders are errors; there is no fallback to old dumps.
-Firmware remains in `rom/`. Retail images are probed on Studio II and both
-Studio III configurations; this is a compatibility probe, not a claim that
-all images support all three machines. Visicom images use Visicom only.
-By default every A key is tested independently from a fresh boot, plus no input.
-The database records full-container SHA-256, CRC32, size, canonical title and
-machine candidates for the 23 selected ST2 images. Matching uses the recorded
-SHA-256 directly; `filename` is descriptive metadata and is never opened or used
-as a lookup key. Renaming or moving a file preserves its mapping and case IDs.
-Unknown hashes remain exploratory; outside the configured machine folders they
-require an explicit `--machine`. Changed bytes never inherit a known mapping by name.
-Add sequences only after reviewing the exact images; identification alone does not
-verify startup. Until modes are recorded, `--sequences` produces no cases.
-Byte-identical images share cases.
-
-Run these from the repository root in the configured Verilator build shell:
-
-```sh
-# Inventory only; no build or simulation. Prints the new report directory.
-python3 tools/game-start-sweep.py
-
-# Build only when explicitly authorized; never use stale RTL output.
-make -C verilator -B headless
-
-# Small first capture; two fresh runs test repeatability.
-python3 tools/game-start-sweep.py --run --machine visicom --match "Sports Fan" --repeat 2
-
-# Replay manifest sequences explicitly; this does not discover start keys.
-python3 tools/game-start-sweep.py --run --sequences --repeat 2
-
-# Relocated corpus: folder names and game filenames do not determine identity.
-python3 tools/game-start-sweep.py --folder "/path/to/Visicom" --machine visicom
-
-# Explicit exploration: every A key from a fresh boot, plus no-input control.
-python3 tools/game-start-sweep.py --run --explore a --match "Space Command"
-```
-
-Use `--explore ab` for all twenty keys, `--machine visicom` to restrict machines,
-and `--limit 5` for a bounded sample.
-On Visicom, `A1/A2/A3/A4/A7` select resident games even with a cartridge loaded;
-their screenshots do not demonstrate cartridge startup. Compare `A0` and `A5`
-as separate fresh-boot cases. Earlier Sumo `A0` then `A5` captures do not verify
-Sumo selection. A changed screen alone does not identify a game or mode.
-Each invocation preserves a new output directory with `index.html`, `coverage.json`,
-`results.json`, exact commands, logs and three screenshots per run. Inputs are raw
-keypad presses at frames 40, 90, 140, etc., held for 15 frames, with `--ce4` and
-manual profile 0. This checks software startup through the core, not gamepad
-automapping or the MiSTer top. Frames are machine-relative, not equal wall time
-between PAL and NTSC. Missing captures, timeouts and simulator failures are errors.
-
-After visually checking the gallery, explicitly approve selected case IDs:
-
-```sh
-python3 tools/game-start-sweep.py --approve out/REVIEWED_RUN --case CASE_ID
-```
-
-Approval requires two successful runs with identical pixels. Baselines live in
-`out/game-start-baselines.json` by default (`--baseline FILE` overrides it).
-Later runs report PASS/DIFF only against approved baselines; unapproved cases
-remain REVIEW, and differing repeat runs are NONDETERMINISTIC. Comparison hashes
-decoded RGB pixels and dimensions, not compressed PNG bytes. Case identity includes
-machine, exact firmware/cartridge hashes, key timing and capture settings, so changed
-inputs need fresh review. DIFF, NONDETERMINISTIC and ERROR return a nonzero exit code.
-Matching screenshots establish regression stability, not complete gameplay accuracy.
-
-`python3 -B tools/test-game-start-sweep.py` checks pixel comparison, approval gates
-and failure handling with synthetic images, plus folder restrictions and hash
-identity across renames and moves; it does not run Verilator.
+The Docker Quartus helper remains a separate optional workflow. Do not encode maintainer-specific local installation paths into repository scripts or documentation.
 
 ## References and provenance
 
-When timing is ambiguous, combine RCA/Weisbecker primary material, MAME, Emma 02, Paul Robson's emulator and software, Andrew Modla's `rca-studio2`, Eric Smith's COSMAC VHDL, dmadole's AVI1861, and real hardware evidence.
+When timing or device behavior is ambiguous, combine RCA/Weisbecker primary material with independent implementations and hardware evidence. Useful references include MAME, Emma 02, Paul Robson's emulator and software, Andrew Modla's `rca-studio2`, Eric Smith's COSMAC VHDL, dmadole's AVI1861, and real hardware captures.
 
 The original core is by Jason Coombes, with MiSTer integration and early Pixie work by Flandango. Alan Steremberg carried later CPU/DMA/video and machine-support work. Elle Ball contributed controller profiles, OSD and scaling work, sync-preservation changes, research, and hardware testing.
 
-Accuracy work also relies on Paul Robson, MAME contributors, Marcel van Tongeren, Andrew Modla, Eric Smith, dmadole, kanpapa, RCA documentation, and community hardware research. Special thanks to Kevin Bunch for reference captures and hardware insight, and to the Hagley Museum and Library for preservation work.
+Accuracy work also relies on Paul Robson, MAME contributors, Marcel van Tongeren, Andrew Modla, Eric Smith, dmadole, kanpapa, RCA documentation, community hardware research, Kevin Bunch's reference captures and hardware insight, and Hagley Museum and Library preservation work.
 
 The project is GPL-2.0-or-later. OpenStudio2 is MIT. Reference-emulator sources under `tools/refemu/` are not compiled into the core.
