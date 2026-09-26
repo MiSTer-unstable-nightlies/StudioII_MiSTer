@@ -209,49 +209,56 @@ localparam CONF_STR = {
 	// CHIP-8 data can be preloaded regardless of the active machine
 	"F3,CH8,Load CHIP-8;",
 	"-;",
+
 	// Machine held until Apply
 	"O[14:13],Machine,Studio II,Studio III PAL,Studio III NTSC,Visicom;",
 	"R[15],Apply and Reset;",
 	"-;",
+
 	"O[6],Mapping,Auto,Manual;",
 	// Order must match localparams in rtl/rcastudioii.sv
 	"D2O[5:2],Joystick,None,4-way,Space War,Freeway,Bowling,Baseball,Robson,Visicom Art,8-way,Art,Robson2P,Race,Gunfighter/Tennis,CHIP-8,Climber/Outbreak,Space Explorer;",
 	"O[8:7],Players,Auto,1,2;",
 	"O[10:9],Numstick,Off,Pad A,Pad B;",
 	"-;",
+
 	"P1,Audio & Video;",
 	"P1-;",
 	"P1O[122:121],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-	// Menu-mask prefixes must precede the page selector.
+	// Menu-mask prefixes must precede page selector
 	"d6P1O[21],Vertical Crop,Disabled,216p (5x);",
 	"d6P1O[25:22],Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
 	"P1O[12:11],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1O[26],Borders,Show,Hide;",
 	"P1-;",
+	"D8P1O[33:31],Studio II Palette,Original,Amber,Green,Inverted,Custom;",
+	"HBP1F6,GBP,Load Custom Palette;",
+	"D7P1O[39:37],Studio III Palette,Original,Prototype,Warm,Cool,Custom;",
+	"HAP1F7,PAL,Load Custom Palette;",
+	"D9P1O[36:34],Visicom Palette,Balanced,Box Art,Emma 02,FLiP,MAME,Manuals,Nicole Express,Custom;",
+	"HCP1F5,GBP,Load Custom Palette;",
+	"P1-;",
 	"P1O[16],Sound,On,Off;",
 	"D4P1O[19:17],Beeper Pitch,Original,High,Higher,Highest,Lowest,Lower,Low;",
 	"D5P1O[20],CDP1863 Pitch,Original,PAL (Lower);",
-	"P1-;",
-	"P2,Palettes;",
-	"P2-;",
-	"D8P2O[33:31],Studio II,Original,Amber,Green,Inverted,Custom;",
-	"HBP2F6,GBP,Load Custom Palette;",
-	"D7P2O[39:37],Studio III,Original,Prototype,Warm,Cool,Custom;",
-	"HAP2F7,PAL,Load Custom Palette;",
-	"D9P2O[36:34],Visicom,Balanced,Box Art,Emma 02,FLiP,MAME,Manuals,Nicole Express,Custom;",
-	"HCP2F5,GBP,Load Custom Palette;",
+
 	"P3,System;",
 	"P3-;",
-	"P3F2,BINROM,Load Machine ROM;",
-	"P3F4,BINROM,Load CHIP-8 Core;",
+	"P3F2,BINROM,Load Firmware/ROM;",
+	"P3F4,BINROM,Load CHIP-8 Interp.;",
+	"P3-;",
+	"P3T[1],Clear;",
+	"P3T[0],Reset;",
+	"P3-;",
+	"P3R[28],Unload Software;",
+	"P3R[27],Unload Software and Reset;",
 	"-;",
-	"T[1],Clear;",
-	"R[28],Unload Software;",
-	"T[0],Reset;",
-	"R[27],Unload Software and Reset;",
-	// Virtual mapping, not menu items
+
+	"R[0],Reset and Close OSD;",
+
+	// Virtual mappings
 	"J1,Fire,Extra,Start,Clear,A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,B0,B1,B2,B3,B4,B5,B6,B7,B8,B9;",
-	// jn is default virtual mapping
+	// Default virtual mapping
 	"jn,A,B,Start,Select;",
 	"V,v",`BUILD_DATE
 };

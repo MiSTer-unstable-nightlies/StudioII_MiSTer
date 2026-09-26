@@ -14,11 +14,20 @@ Supported hardware includes:
 * Toshiba Visicom COM-100
 * Trevi M-1200
 
+## Features
+
+* 100% software compatibility across all machines including all known homebrew and demos
+* Custom CHIP-8 interpreter with dedicated RAM ([OpenStudio2](https://github.com/meauxdal/OpenStudio2)) written specifically for MiSTer with 100% original CHIP-8 compatibility
+* Detailed NE555 beeper pitch modeling based on hardware captures
+* Refined Toshiba Visicom COM-100 palette based on hardware captures
+* Keypad-to-Joystick automapping for all known games
+* Custom palette support for all supported machines
+
 ## Install
 
 Copy the release .rbf to e.g. /media/fat/_Console/ on MiSTer.
 
-Put the 4 BIOS files below in /media/fat/games/Studio-II/. [OpenStudio2](https://github.com/meauxdal/OpenStudio2) is bundled for CHIP-8 support.
+Put the 4 BIOS files below in /media/fat/games/Studio-II/. CHIP-8 games will work even if no BIOS is present. A few games run bare-metal and do not require a BIOS. 
 
 | Machine | MiSTer filename | Common filename | Size | MD5 |
 |---|---|---|---:|---|
@@ -27,7 +36,15 @@ Put the 4 BIOS files below in /media/fat/games/Studio-II/. [OpenStudio2](https:/
 | Studio III NTSC | boot2.rom | studio3_ntsc.bin | 4 KB | 849A484AA4B2784ECE5C35C39D9D51A8 |
 | Visicom | boot3.rom | visicom.rom | 2 KB | AEEC6FE3934481E20EB7DB6D5FF56A54 |
 
-Other firmware images may also work.
+The above table is not exhaustive; other ROMs may also work.
+
+## Use
+
+* Use Load Software to load an .st2 or .bin file for the selected machine. 
+* Use Load CHIP-8 to select a .ch8 original CHIP-8 game. OpenStudio2 is used as the default CHIP-8 interpreter
+* Select Machine (Studio II, Studio III PAL, Studio III NTSC, Visicom) first, then Apply and Reset to actually switch
+
+Studio II and III titles that use the BIOS are cross-compatible, but Visicom games only work on Visicom. Studio III games with color play in monochrome on Studio II
 
 ## Keypad and CLEAR
 
@@ -47,6 +64,8 @@ The keypads are mapped to the MiSTer keyboard like this:
 |---|---|---|---|---|---|---|---|---|---|---|
 | Keypad A | 1 | 2 | 3 | Q | W | E | A | S | D | X |
 | Keypad B | 7 | 8 | 9 | U | I | O | J | K | L | , |
+
+Clear is mapped to F3 on the MiSTer keyboard. Clear initializes (resets) the game or firmware you have running. It's a physical button on the hardware.
 
 ## CHIP-8
 
@@ -72,13 +91,17 @@ Marcel van Tongeren's chip8.bin interpreter has additional memory limitations. S
 
 CHIP-8 cannot be used on Visicom (no CHIP-8 interpreter).
 
-## Options
+## Audio & Video Options
 
 * Beeper pitch adjusts the Studio II and Visicom beeper tuning. 
 * CDP1863 pitch toggles Studio III NTSC's original pitch and the (less piercing) Studio III PAL pitch.
 * Studio II and Visicom custom palettes use 16-byte MiSTer Game Boy .gbp files. Studio II uses first and last .gbp colors for white/black respectively. Also works with CHIP-8.
 * Studio III custom palettes use a headerless .pal file. Eight sequential RGB888 entries (24 bytes); trailing bytes are ignored.
-* Clear initializes (resets) the game or firmware you have running. It's a physical button on the hardware.
+
+## System Options
+
+* Load Firmware/ROM allows you to load a custom BIOS or bare-metal image.
+* Load CHIP-8 Interp. allows you to load a different CHIP-8 interpreter
 
 ## Controller profiles
 
@@ -96,4 +119,4 @@ Studio IV is not supported.
 
 Original core by Jason Coombes; MiSTer integration and Pixie work by Flandango; later contributions by Alan Steremberg and Elle Ball. See [CREDITS.md](CREDITS.md) for detailed acknowledgements.
 
-GPL-2.0-or-later; see file headers and [LICENSE](LICENSE). OpenStudio2 is licensed under [MIT](/rom/openstudio2-LICENSE.txt).
+GPL-2.0-or-later; see file headers and [LICENSE](LICENSE). OpenStudio2 is licensed under [MIT](rom/openstudio2-LICENSE.txt).

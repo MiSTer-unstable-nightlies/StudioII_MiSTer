@@ -311,10 +311,12 @@
 
 	end
 
-// Race / Race Colour / Race DX (thru v1.03)
+// Race / Race Colour / Race DX (thru v1.10)
 16'h1CA7, 16'h47EA, 16'h5374, 16'h5638, 16'h56C3, 16'h6664,
 16'h797C, 16'hC713, 16'hD6C0, 16'hFCC8, 16'h4DB8, 16'hE962,
-16'h9E23, 16'h7B00, 16'h55C5, 16'h8907, 16'h400A, 16'h9CC8:
+16'h9E23, 16'h7B00, 16'h55C5, 16'h8907, 16'h400A, 16'h9CC8,
+16'h0BE2, 16'h4C13, 16'h6D66, 16'h03FF, 16'h865C, 16'hE9F4,
+16'h6AC9, 16'h3328:
 	begin
 
 		p = MAP_RACE;

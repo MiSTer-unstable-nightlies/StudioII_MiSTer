@@ -1,7 +1,7 @@
 # Controller implementation
 
 Game controls belong in [how-to-play.md](how-to-play.md), user-facing options in
-[Readme.md](../Readme.md), and unfinished work in [roadmap.md](../roadmap.md#controller-and-keypad-refinements).
+[Readme.md](../Readme.md), and unfinished work in [roadmap.md](../roadmap.md).
 
 ## Hardware and input paths
 

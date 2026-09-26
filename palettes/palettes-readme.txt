@@ -1,17 +1,14 @@
-Studio II, Studio III, and Visicom Color Palettes
+/// Studio II, Studio III, and Visicom Color Palettes ///
 
 .gbp files provide alternate two- and four-color palettes for Studio II and 
-Visicom.
+Visicom. .pal files provide eight-color palettes for Studio III.
 
-The root of this directory contains files corresponding to built-in presets and
-recommended custom-file examples. The fun/ directory contains optional
-display-referred Studio II and Visicom alternatives that are not intended as
-hardware references.
-
-The core uses the standard MiSTer Game Boy GBP format: four RGB888 colors in
+.gbp files use the standard MiSTer Game Boy GBP format: four RGB888 colors in
 lightest-to-darkest order, followed by four reserved zero bytes.
 
-Studio II
+Additional optional themes are under fun/.
+
+/// Studio II ///
 
 Studio II uses the first value for white and the last entry for black.
 The middle values are not used for Studio II. These
@@ -28,17 +25,16 @@ Default Studio II palette.
 
 studio2-amber-terminal.gbp, studio2-green-terminal.gbp, and
 studio2-inverted.gbp correspond to the other built-in Studio II presets.
-Additional optional themes are under fun/ with the studio2- prefix.
 
-Studio III
+
+/// Studio III ///
 
 Studio III custom palettes use a headerless .pal file containing eight RGB888
 triples in hardware-index order (indices 0 through 7), for 24 bytes total.
 Trailing bytes are ignored. The same custom palette applies to the PAL and NTSC
 Studio III variants, and loading it does not reset the machine.
 
-tools/studio3-palette/studio3-palette.c creates these files with only a C99
-compiler and the C standard library. From the repository root:
+tools/studio3-palette/studio3-palette.c creates these files. From the repository root:
 
     cc -std=c99 -Wall -Wextra -o tools/studio3-palette/studio3-palette tools/studio3-palette/studio3-palette.c
     ./tools/studio3-palette/studio3-palette custom.pal 000000 0000FF 00FF00 00FFFF FF0000 FF00FF FFFF00 FFFFFF
@@ -49,6 +45,13 @@ through 7. A leading # is accepted. For example, the Original palette is:
     ./tools/studio3-palette/studio3-palette studio3-original.pal 000000 0000FF 00FF00 00FFFF FF0000 FF00FF FFFF00 FFFFFF
 
 The included examples are represented below directly in hardware-index order:
+
+studio3-prototype.pal
+
+0 #000000  1 #123C62  2 #126044  3 #2A9DA2
+4 #D95718  5 #B56B73  6 #D6A328  7 #D8D5B5
+
+Prototype Studio III palette. This corresponds to the core's Prototype preset.
 
 studio3-warm.pal
 
@@ -83,11 +86,9 @@ studio3-greyscale.pal
 0 #000000  1 #1D1D1D  2 #969696  3 #B2B2B2
 4 #4C4C4C  5 #6A6A6A  6 #E2E2E2  7 #FFFFFF
 
-Luminance-weighted greys at the normal colour indices. Use this to check
-colour-RAM mapping and half-bright background selection; it is not intended as
-an aesthetic palette.
+Luminance-weighted greys at the normal colour indices.
 
-Visicom
+/// Visicom ///
 
 Visicom maps the four GBP entries to its hardware color indices in reverse
 order:
@@ -135,7 +136,7 @@ Yellow  #B9B438
 Blue    #4D91B5
 
 Visicom manual print samples adjusted against the combined hardware capture
-evidence. The print green luminance is not retained.
+evidence.
 
 fun/visicom-manuals-print.gbp
 
@@ -145,7 +146,6 @@ Yellow  #D1C313
 Blue    #078C9F
 
 Representative colors sampled from four printed Visicom manual screenshots.
-This preserves the manuals' reproduction and is not a hardware color reference.
 
 visicom-emma02.gbp
 
@@ -182,7 +182,3 @@ Yellow  #AFB72B
 Blue    #2688F2
 
 Sampled and adjusted from Nicole Express captures.
-
-Additional optional themes are under fun/ with the visicom- prefix. The
-box-art-print and manuals-print files preserve print-reproduction colours;
-the remaining fun palettes are display-referred themes.

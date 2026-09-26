@@ -229,7 +229,15 @@ No single test establishes overall accuracy:
 
 Canonical paths are `rom/` for firmware, `software/` for the corpus, `tools/refemu/` for the reference emulator, `verilator/obj_dir_headless/Vtop` for the headless model, and `out/` for generated captures. `refs/` is optional research material and must not be a normal build dependency.
 
-Primary directed checks include:
+## Tests
+
+Primary test suite command, from the repo root directory (Linux / WSL):
+
+- `make -C verilator clean && make -C verilator headless && bash tools/rtl-regression.sh`
+
+`tools/rtl-regression.sh` rebuilds the headless and CPU-only models, runs the LOAD test, and then runs the headless smoke suite.
+
+Directed checks include:
 
 - `tools/memdecode-test.sh`
 - `tools/chip8-loader-test.sh`
@@ -239,9 +247,7 @@ Primary directed checks include:
 - `make -C verilator cpu-load-test`
 - `make -C verilator palette-test`
 
-`tools/rtl-regression.sh` rebuilds the headless and CPU-only models, runs the LOAD test, and then runs the headless smoke suite. Use targeted tests while developing and the full regression before release.
-
-`tools/game-start-sweep.py` remains available for exact-image startup and screenshot regression work. Its output is evidence of repeatability for the tested image, machine, input sequence, and capture settings; it is not proof of complete gameplay accuracy.
+`tools/game-start-sweep.py` remains available for exact-image startup and screenshot regression work but is not run as part of the primary rtl-regression suite.
 
 ## Building
 

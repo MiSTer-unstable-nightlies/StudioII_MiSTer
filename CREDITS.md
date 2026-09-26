@@ -1,9 +1,9 @@
 # Credits
 
-- **Jason Coombes** ([@JasonA-dev](https://github.com/JasonA-dev)) — Original core design and implementation. His 2022–2025 work remains a load-bearing part of the project.
-- **Flandango** ([@Flandango](https://github.com/Flandango)) — MiSTer integration and early Pixie work.
-- **Alan Steremberg** ([@alanswx](https://github.com/alanswx)) — Later 2026 CPU, video, timing, and machine-support work.
-- **Elle Ball** ([@meauxdal](https://github.com/meauxdal)) — MiSTer core improvements including the hardware-derived Studio II beeper model, OSD and integer-scaling work, automatic controller mappings, HDMI sync-loss mitigation, extensive library research and testing, and documentation.
+- **Jason Coombes** ([@JasonA-dev](https://github.com/JasonA-dev)) — Original core design and implementation. His 2022–2025 work remains foundational to the project.
+- **Flandango** ([@Flandango](https://github.com/Flandango)) — MiSTer integration and Pixie improvements.
+- **Alan Steremberg** ([@alanswx](https://github.com/alanswx)) — Substantial CPU, video, timing, and machine-support work; many bugfixes, key accuracy improvements.
+- **Elle Ball** ([@meauxdal](https://github.com/meauxdal)) — Hardware-derived beeper model with adjustable pitch, OpenStudio2 development and integration, loader fixes, additional MiSTer integration (5x crop, integer scaling, border toggle, custom palettes), software hashing and automapping work, HDMI sync-loss mitigation, OSD polish, test suite improvements, library research, validation, and documentation. 
 
 Accuracy and compatibility work also relies heavily on:
 
