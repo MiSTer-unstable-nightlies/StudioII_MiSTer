@@ -37,6 +37,7 @@
 dse/
 
 build_id.v
+!verilator/test_support/build_id.v
 c5_pin_model_dump.txt
 db/
 docs/rca-technical/
@@ -82,6 +83,7 @@ verilator/obj_dir/
 verilator/obj_dir_cpu_load/
 verilator/obj_dir_headless/
 verilator/obj_dir_palette/
+verilator/obj_dir_emu_reset/
 verilator/out/
 verilator/sim.vcd
 verilator/spacewar.bin

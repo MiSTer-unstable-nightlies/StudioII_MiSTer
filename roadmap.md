@@ -10,8 +10,8 @@ is tracked here before the remaining longer-term ideas.
 - Validate palette presets and custom `.gbp`/`.pal` loading over HDMI and direct
   video. Verilator covers all preset mappings, both Studio III variants,
   complete-file commits, and permissive Studio III trailing bytes.
-- Validate the implemented Controls and System OSD submenus on MiSTer. Existing
-  status fields are unchanged and ordinary software actions remain top-level.
+- Validate the Audio & Video and System OSD submenus on MiSTer, including
+  machine-specific option availability and firmware/interpreter replacement.
 
 ## Keyboard and keypad ideas
 
@@ -20,15 +20,6 @@ is tracked here before the remaining longer-term ideas.
   number row and player two uses the physical numpad
 - Retain current keyboard layout on keypad A while physical 
   numpad drives keypad B
-- Add conventional CHIP-8 QWERTY layout:
-
-  | Original CHIP-8 keypad | Standard QWERTY mapping |
-  |---|---|
-  | 1 2 3 C | 1 2 3 4 |
-  | 4 5 6 D | Q W E R |
-  | 7 8 9 E | A S D F |
-  | A 0 B F | Z X C V |
-
 - Add an optional literal CHIP-8 keyboard layout in which every COSMAC VIP
   keypad symbol uses its matching MiSTer keyboard key (A to A, B to B,
   and so on).

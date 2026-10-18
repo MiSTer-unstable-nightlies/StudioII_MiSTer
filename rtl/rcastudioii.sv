@@ -47,6 +47,7 @@ module rcastudioii
 	input        [9:0] osk_a,          // on-screen keypad presses for keypad A (bit = key)
 	input        [9:0] osk_b,          // and for keypad B
 	output reg         chip8_fw_loaded,
+	output             chip8_active,
 	input  reg         ce_pix,
 	input              clear_key,
 	//    0  Studio II
@@ -83,7 +84,7 @@ reg  chip8_loaded = 1'b0;
 reg  chip8_write_seen = 1'b0;
 reg  chip8_fw_start_seen = 1'b0;
 reg  chip8_fw_os2 = 1'b1;
-wire chip8_active = chip8_loaded && !machine_visicom;
+assign chip8_active = chip8_loaded && !machine_visicom;
 wire chip8_os2_active = chip8_active && chip8_fw_os2;
 wire chip8_marcel_active = chip8_active && !chip8_fw_os2;
 wire preserve_sync_reset = reset && !video_reset;

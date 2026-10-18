@@ -99,6 +99,11 @@ CPU_LOAD_VOPT = -O1 --x-assign fast --x-initial fast \
 PALETTE_DIR = obj_dir_palette
 PALETTE_EXE = ./$(PALETTE_DIR)/Vstudio2_palette
 PALETTE_SRC = studio2_palette_test.cpp
+EMU_RESET_DIR = obj_dir_emu_reset
+EMU_RESET_EXE = ./$(EMU_RESET_DIR)/Vemu_reset_test
+EMU_RESET_SRC = $(filter-out sim.v,$(V_SRC)) ../Studio-II.sv $(RTL)/numstick.sv \
+	$(addprefix ../sys/,video_mixer.sv video_freak.sv video_freezer.sv gamma_corr.sv scandoubler.v hq2x.sv scanlines.v math.sv) \
+	test_support/emu_stubs.sv emu_reset_test.sv
 
 all: $(EXE)
 
@@ -112,6 +117,13 @@ cpu-load-test: $(CPU_LOAD_EXE)
 
 palette-test: $(PALETTE_EXE)
 	$(PALETTE_EXE)
+
+emu-reset-test: $(EMU_RESET_EXE)
+	$(EMU_RESET_EXE)
+
+$(EMU_RESET_EXE): $(EMU_RESET_SRC) $(HL_HEADERS) ../sys/emu_ports.vh test_support/build_id.v $(OS2_IMAGE) Makefile
+	$V --binary --timing --assert $(CPU_LOAD_VOPT) -Wno-PROCASSWIRE -Wno-BLKANDNBLK $(V_INC) +incdir+.. +incdir+test_support \
+		--Mdir ./$(EMU_RESET_DIR) --top-module emu_reset_test $(EMU_RESET_SRC)
 
 $(PALETTE_EXE): $(RTL)/studio2_palette.sv $(PALETTE_SRC) Makefile
 	$V -cc $(CPU_LOAD_VOPT) --exe --Mdir ./$(PALETTE_DIR) --top-module studio2_palette \
@@ -142,6 +154,6 @@ lint:
 	$V --lint-only -Wall -Wno-DECLFILENAME -Wno-fatal $(V_INC) $(TOP) $(V_SRC)
 
 clean:
-	rm -rf obj_dir $(HL_DIR) $(CPU_LOAD_DIR) $(PALETTE_DIR)
+	rm -rf obj_dir $(HL_DIR) $(CPU_LOAD_DIR) $(PALETTE_DIR) $(EMU_RESET_DIR)
 
-.PHONY: all headless loader-regression cpu-load-test palette-test lint fast clean
+.PHONY: all headless loader-regression cpu-load-test palette-test emu-reset-test lint fast clean

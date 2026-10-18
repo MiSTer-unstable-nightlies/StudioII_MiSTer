@@ -1,51 +1,43 @@
-# AGENTS.md — permanent repository rules
+# AGENTS.md
 
-Read this entire file every session.
+Read every session.
 
-## Authority and reading
+## Philosophy
 
-- Current RTL, tests, and reports define implemented behavior; primary documentation and measured hardware define the target. Resolve disagreement explicitly.
-- Read only the relevant authority: `Readme.md` for installation and user-facing behavior, `docs/development.md` for architecture and build mechanics, `docs/controller.md` for controller implementation, `docs/how-to-play.md` for game controls, `docs/beeper-status.md` for Studio II audio, `docs/analog-video.md` for direct video, and `roadmap.md` for future work.
-- Keep mutable status, measurements, investigations, and release notes out of this file. Update the focused authority when a change makes it stale.
+- Historical preservation and overall machine accuracy is paramount
+- Polish and attention to detail is a strong guideline
+- Quality of life is important where it makes sense and doesn't take too many resources
+- Every word in every context is a liability
+- Prefer clear, clean, working code over excessive documentation or code-commentary
 
-## Repository boundaries
+## MiSTer cores
 
-- **Never modify `sys/`.** It is upstream MiSTer framework code. Fix integration in `Studio-II.sv` or core RTL.
-- Preserve a compact, unified hardware model. Do not add parallel implementations, title-specific RTL, duplicated state, or speculative compatibility paths.
-- Prefer hardware behavior over emulator convenience. Name the hardware, primary document, trace, or capture used for timing and geometry changes.
-- Unknown behavior stays unknown. Do not infer controls or machine behavior from a similar title.
-- CRCs identify exact file bytes. Verify the image, container, machine, selection sequence, keypad roles, and controls before adding a profile entry.
-- Do not reorganize canonical paths or introduce dependencies on ignored/private reference material without an explicit repository-wide change.
+- `sys` must match upstream MiSTer; never make project-specific edits there. Make local changes elsewhere so the project remains eligible for MiSTer-devel (important qualification: upstream `sys` updates are allowed and desired whenever there are Template_MiSTer updates to keep the core in line with upstream)
 
-## MiSTer and RTL invariants
+## Token efficiency
 
-- Quartus 17.0.x is the supported toolchain.
-- `Studio-II.sv` is the `emu` top; keep MiSTer-facing policy there and machine behavior in `rtl/rcastudioii.sv` or the relevant device module.
-- `bitmap_de`/core `video_de` is capture-only. Normal output DE comes from raster blanking through `video_mixer`.
-- Preserve the separate machine-reset and video-reset policy: CLEAR, cartridge/firmware loads, and same-standard Apply keep raster timing live; PAL/NTSC changes are hard resets.
-- Preserve cartridge unload semantics: both unload actions clear active cartridge/CHIP-8 state through the shared unload path; only **Reset and Unload Cartridge** resets the machine. Unloading must not destroy per-machine cached cartridge contents or remembered resident mappings.
-- Preserve instruction-boundary interrupt/DMA acceptance, held DMA requests, and the deliberate CDP1861 phase/EF timing.
-- Keep Studio II signed beeper audio isolated from the Studio III programmable-tone path. Output controls such as mute must not reset or fork generator state.
-- Use explicit widths and signedness. Keep counters/functions wide enough for their declared maxima; do not rely on implicit truncation or widening.
-- Write synthesizable RAM in an inference-safe form. After any RAM-port or read/write-mode change, the Quartus map report must still show block RAM.
-- Keep `files.qip` and every Verilator source list synchronized when live RTL files change. `Studio-II.qsf` may be regenerated; do not use it as the source list or stage incidental churn.
-- Verilator output may be stale after RTL edits; clean the relevant object directory before trusting a suspicious rebuild.
-- Follow the existing RTL formatting and module conventions. Avoid unrelated cleanup in functional changes.
+What not to do unless asked:
+- run full Quartus builds: ask the user to do it
+- run long scripts: ask the user to do it
+- look for workarounds for missing resources the user assumes you have; stop and ask directly
 
-## Work and approval rules
+Preserve tokens:
+- ask questions when unsure
+- periodically check usage
+- make an effort to tie off turns and emit *before* usage exhaustion
 
-- Inspect Git status before editing and before handoff. Preserve user changes, generated captures, firmware, and release artifacts; never delete or overwrite them as cleanup.
-- Do not commit, stash, create/switch/delete branches or tags, rewrite history, push, change a PR, or create a release unless the user explicitly asks for that action.
-- Never push from this repository. A push may trigger an automated build or distribution; prepare the local commit and leave the push to the user.
-- Treat `releases/` as a live distribution boundary: adding or replacing a file there can send it to users through `update_all`. Never change a release artifact unless the user explicitly requests that exact publication change, and always leave publication to the user.
-- Never run Quartus synthesis.
-- Do not run Verilator builds, hardware regressions, or other long jobs unless the user explicitly asks.
-- Substantial additions use a dedicated review branch after user approval. Treat `main` as release-producing.
-- Before any permitted remote Git action, review the diff and untracked files and obtain explicit approval.
+## Code hygiene
 
-## Change discipline
-
-- Make the smallest change that completely solves the problem. Words and abstractions are maintenance liabilities too.
-- Tests must target the changed failure class; never present emulator agreement as complete hardware accuracy or simulation success as proof of FPGA RAM inference.
-- Keep code comments terse: explain only non-obvious operation, constraints, rationale, or hardware-source correspondence. Do not restate code or narrate ordinary bug history, failed approaches, or fix chronology; put those in focused docs and distill only recurring high-risk traps back into code.
-- Finish by reviewing the complete diff, reporting what was and was not verified, and identifying any user-run build, Quartus, or hardware check still required.
+- Manage whitespace consistently
+- Keep code comments terse and direct; prefer fewer words but preserve clarity
+- Avoid historical asides (unless they have ongoing technical value)
+- Never use unusual characters in code or comments; plain ASCII only (no em dashes, emojis, decorative symbols, etc.)
+- Code is readable (self-describing in form) such that it does not require constant commentary
+- Comments only explain intent, constraints, hardware behavior, or non-obvious logic
+- Think ahead and make arrangements for future needs (ask; don't guess)
+- Use TODO flags for future attention, but be direct
+- Prefer preservation of existing structure unless refactoring
+- Do not invent abstractions without concrete need
+- Keep docs minimal to mitigate maintenance scope
+- No narrative implementation history in source
+- In general, match surrounding style unless it strongly conflicts with above (ask; don't guess)

@@ -16,9 +16,10 @@ quiet_build() {
         printf '%s: PASS\n' "$label"
         rm -f "$log"
         return 0
+    else
+        status=$?
     fi
 
-    status=$?
     printf '%s: FAIL\n' "$label" >&2
     cat "$log" >&2
     rm -f "$log"
@@ -34,6 +35,10 @@ quiet_build "CDP1802 LOAD test build" \
 quiet_build "Palette test build" \
     make --no-print-directory -C "$ROOT/verilator" -B ./obj_dir_palette/Vstudio2_palette
 
+quiet_build "MiSTer reset test build" \
+    make --no-print-directory -C "$ROOT/verilator" -B ./obj_dir_emu_reset/Vemu_reset_test
+
 "$ROOT/verilator/obj_dir_cpu_load/Vcdp1802"
 "$ROOT/verilator/obj_dir_palette/Vstudio2_palette"
+"$ROOT/verilator/obj_dir_emu_reset/Vemu_reset_test"
 bash "$ROOT/tools/headless-smoke.sh"

@@ -74,9 +74,9 @@ Relevant status fields:
 | `status[36:34]` | Visicom palette |
 | `status[39:37]` | Studio III palette |
 
-`status_menumask` hides controls that do not apply to the active machine. Custom palette loader rows appear only when the corresponding machine is active and its palette selector is set to Custom.
+`status_menumask` controls option availability, including disabling Load CHIP-8 on Visicom. Custom palette loader rows appear only when the corresponding machine is active and its palette selector is set to Custom.
 
-The System submenu contains Machine ROM and CHIP-8 Core replacement. Load Software, Load CHIP-8, Machine, Apply and Reset, Clear, Reset, Unload Software, and Unload Software and Reset remain at the top level.
+The System submenu contains Load Firmware/ROM, CHIP-8 Interpreter, Clear, Reset, Unload Software, and Unload Software and Reset. Load Software, Load CHIP-8, Machine, Apply and Reset, controller options, and Reset and Close OSD remain at the top level.
 
 ## Audio
 
@@ -131,8 +131,8 @@ CPU/machine reset and raster reset are separate. `reset` restarts machine state;
 | Core load, MiSTer reset, unknown download | hard | restarts |
 | Software load | sync-preserving | remains live |
 | CHIP-8 load | sync-preserving | remains live |
-| Machine ROM load | sync-preserving | remains live |
-| CHIP-8 Core load | sync-preserving | remains live |
+| Firmware/ROM load | sync-preserving | remains live |
+| CHIP-8 interpreter load | sync-preserving | remains live |
 | Custom palette load | none | remains live |
 | Same-standard Apply and Reset | sync-preserving | remains live |
 | PAL/NTSC Apply and Reset | hard | restarts |
@@ -141,6 +141,8 @@ CPU/machine reset and raster reset are separate. `reset` restarts machine state;
 Download type is latched through the post-download reset stretch because `ioctl_index` is valid only during transfer. Apply and Reset determines whether a machine change crosses video standards before updating `machine_active`. Hard reset sources dominate overlaps.
 
 CLEAR is normal console operation, not a generic hard reset. Its special handling leaves the Studio III tone generator running.
+
+Without a machine BIOS, the top level holds reset unless a CHIP-8 program is active. Loading a program with bundled OpenStudio2 releases that hold. Unloading restores the BIOS requirement; interpreter replacement alone does not bypass it.
 
 ## Firmware and download routes
 
@@ -164,9 +166,9 @@ The low six bits of `ioctl_index` select the user download route:
 |---:|---|---|---|
 | `0` | boot firmware/autoload | ROM | hard during core boot |
 | `1` | Load Software | `.st2`, `.bin`, `.rom` | sync-preserving soft reset |
-| `2` | Load Machine ROM | `.bin`, `.rom` | sync-preserving soft reset |
+| `2` | Load Firmware/ROM | `.bin`, `.rom` | sync-preserving soft reset |
 | `3` | Load CHIP-8 | `.ch8` | sync-preserving soft reset |
-| `4` | Load CHIP-8 Core | `.bin`, `.rom` | sync-preserving soft reset |
+| `4` | CHIP-8 Interpreter | `.bin`, `.rom` | sync-preserving soft reset |
 | `5` | Visicom custom palette | `.gbp` | none |
 | `6` | Studio II custom palette | `.gbp` | none |
 | `7` | Studio III custom palette | `.pal` | none |
@@ -235,7 +237,7 @@ Primary test suite command, from the repo root directory (Linux / WSL):
 
 - `make -C verilator clean && make -C verilator headless && bash tools/rtl-regression.sh`
 
-`tools/rtl-regression.sh` rebuilds the headless and CPU-only models, runs the LOAD test, and then runs the headless smoke suite.
+`tools/rtl-regression.sh` rebuilds the models, runs the LOAD, palette, and MiSTer reset tests, then runs the headless smoke suite.
 
 Directed checks include:
 
@@ -246,6 +248,7 @@ Directed checks include:
 - `tools/verify-beeper.sh`
 - `make -C verilator cpu-load-test`
 - `make -C verilator palette-test`
+- `make -C verilator emu-reset-test` (real MiSTer top with HPS and PLL stubs)
 
 `tools/game-start-sweep.py` remains available for exact-image startup and screenshot regression work but is not run as part of the primary rtl-regression suite.
 

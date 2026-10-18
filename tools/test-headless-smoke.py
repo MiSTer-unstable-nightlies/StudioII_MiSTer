@@ -19,7 +19,7 @@ class SmokeChecks(unittest.TestCase):
         self.root = Path(self.temp.name)
         for directory in ("tools", "bin", "rom", "verilator/obj_dir_headless"):
             (self.root / directory).mkdir(parents=True)
-        for name in ("headless-smoke.sh", "memdecode-test.sh", "tone-test.sh",
+        for name in ("rtl-regression.sh", "headless-smoke.sh", "memdecode-test.sh", "tone-test.sh",
                      "chip8-loader-test.sh", "visicom-loader-test.sh"):
             shutil.copyfile(TOOLS / name, self.root / "tools" / name)
         (self.root / "rom/studio2.rom").write_bytes(bytes(2048))
@@ -47,6 +47,18 @@ class SmokeChecks(unittest.TestCase):
         self.assertEqual(len(logs), 5)
         for log in logs:
             self.assertIn("injected-failure", log.read_text(), log.name)
+
+    def test_build_failure_stops_regression(self):
+        self.script("bin/make", 'echo attempted-build\nexit "${FAKE_MAKE_STATUS:-0}"')
+        for status in ("1", "2", "37"):
+            with self.subTest(status=status):
+                self.env["FAKE_MAKE_STATUS"] = status
+                result = self.run_script("rtl-regression.sh")
+                self.assertEqual(result.returncode, int(status), result.stdout + result.stderr)
+                self.assertIn("Headless model build: FAIL", result.stderr)
+                self.assertEqual(result.stderr.count("attempted-build"), 1)
+                self.assertNotIn("injected-failure", result.stderr)
+                self.assertFalse((self.root / "out").exists())
 
     def test_stale_build_and_make_error_stop_before_tests(self):
         for status in ("1", "2"):

@@ -29,12 +29,15 @@ Most games treat `2/4/6/8` as up/left/right/down, with some also including `1/3/
 
 ## CHIP-8 programs
 
-Download [Marcel van Tongeren's interpreter](https://www.emma02.hobby-site.com/studio_chip8.html),
-and name its 768-byte image `chip8.bin`. **Load CHIP-8** automatically sends an
-interpreter found beside the selected program. You can instead use **Load
-CHIP-8 Interpreter** once per core session; the cached copy then serves `.ch8`
-programs in any directory. Loading the interpreter alone leaves the native
-machine active, and the next **Load CHIP-8** selection enters CHIP-8 mode.
+Select a Studio machine, use **Apply and Reset**, then **Load CHIP-8** to choose
+a `.ch8` program. OpenStudio2 is bundled and runs without a machine BIOS or
+separate interpreter file. **Load CHIP-8** is disabled on Visicom.
+
+To use an optional interpreter, load its image through **System > CHIP-8
+Interpreter**, then select a program through **Load CHIP-8**. Loading the
+interpreter alone does not enter CHIP-8 mode. The override survives reset,
+unload, and machine changes; reloading the core restores bundled OpenStudio2.
+
 While a CHIP-8 program is loaded, the MiSTer keyboard uses the standard CHIP-8
 QWERTY layout:
 
@@ -52,11 +55,15 @@ There is no universal gamepad layout for CHIP-8 software. Use the keyboard,
 direct A/B keypad bindings, Numstick, or select a manual profile appropriate to
 the game. The automatic CHIP-8 profile maps D-pad up/left/down/right to virtual
 keys `5/7/8/9`, Start to `1`, Fire to `F`, and Extra to `0`.
-The loader supports the classic Studio-family interpreter only;
-CHIP-8X, Super-Chip, XO-CHIP, file offsets from `$900` onward, and Visicom are
-not supported. The `$900`-byte payload limit follows from loading at virtual
-`$0200` and requiring the program to end by `$0AFF`; it is not an `$0B00`-byte
-file-size allowance.
+
+OpenStudio2 loads programs at `$0200` in separate 4 KB CHIP-8 RAM, accepting up
+to `$E00` bytes (3584 bytes), through `$0FFF`. CHIP-8X, Super-Chip, and XO-CHIP
+are not supported.
+
+[Marcel van Tongeren's optional interpreter](https://www.emma02.hobby-site.com/studio_chip8.html)
+uses a 768-byte image and accepts up to `$900` bytes (2304 bytes) of program
+data, ending at virtual `$0AFF`. Its writable-memory limits also apply; use
+OpenStudio2 for programs requiring broader writable or self-modifying memory.
 
 ## RCA Studio II resident games
 
